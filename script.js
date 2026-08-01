@@ -17,6 +17,11 @@ function initExplorerMap(config) {
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+    if (config.showUserLocation) {
+        const locationApi = enableUserLocation(map);
+        addLocateControl(map, locationApi);
+    }
+
     // Minimal light basemap, no labels, so the data layers stay
     // the most prominent thing on screen.
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
@@ -118,12 +123,109 @@ function buildLayer(data, cfg) {
     if (isInteractive && cfg.popup) {
         layer.eachLayer(featureLayer => {
             const props = featureLayer.feature.properties;
-            const content = cfg.popup(props);
+            let content = cfg.popup(props);
+
+            if (cfg.directions && typeof featureLayer.getLatLng === 'function') {
+                const ll = featureLayer.getLatLng();
+                content += buildDirectionsLink(ll.lat, ll.lng);
+            }
+
             if (content) featureLayer.bindPopup(content);
         });
     }
 
     return layer;
+}
+
+/* ---------- User location ----------
+   Watches the browser's geolocation and keeps a "you are here"
+   dot (with an accuracy halo) in sync on the map. Returns an
+   object exposing the last known position for other controls. */
+function enableUserLocation(map) {
+    if (!navigator.geolocation) {
+        return { getLatLng: () => null };
+    }
+
+    let marker = null;
+    let accuracyCircle = null;
+    let lastLatLng = null;
+
+    navigator.geolocation.watchPosition(
+        (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            lastLatLng = L.latLng(latitude, longitude);
+
+            if (!marker) {
+                accuracyCircle = L.circle(lastLatLng, {
+                    radius: accuracy,
+                    weight: 0,
+                    fillColor: '#4285F4',
+                    fillOpacity: 0.12,
+                    interactive: false
+                }).addTo(map);
+
+                marker = L.circleMarker(lastLatLng, {
+                    radius: 7,
+                    weight: 2,
+                    color: '#fff',
+                    fillColor: '#4285F4',
+                    fillOpacity: 1,
+                    interactive: false
+                }).addTo(map);
+            } else {
+                marker.setLatLng(lastLatLng);
+                accuracyCircle.setLatLng(lastLatLng);
+                accuracyCircle.setRadius(accuracy);
+            }
+        },
+        (err) => console.warn('Geolocation unavailable:', err.message),
+        { enableHighAccuracy: true, maximumAge: 15000 }
+    );
+
+    return { getLatLng: () => lastLatLng };
+}
+
+/* Small "center on my location" button, styled to match Leaflet's
+   own zoom control so it fits right in above it. */
+function addLocateControl(map, locationApi) {
+    const LocateControl = L.Control.extend({
+        options: { position: 'bottomright' },
+        onAdd: function () {
+            const container = L.DomUtil.create('div', 'leaflet-bar locate-control');
+            const link = L.DomUtil.create('a', '', container);
+            link.href = '#';
+            link.title = 'Show my location';
+            link.innerHTML = '&#9673;';
+
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.on(link, 'click', (e) => {
+                L.DomEvent.preventDefault(e);
+                const ll = locationApi.getLatLng();
+
+                if (ll) {
+                    map.setView(ll, 15);
+                } else if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 15),
+                        (err) => console.warn('Geolocation unavailable:', err.message)
+                    );
+                }
+            });
+
+            return container;
+        }
+    });
+
+    new LocateControl().addTo(map);
+}
+
+/* ---------- Directions link helper ----------
+   Deep-links to Google Maps directions for a point. Origin is
+   left blank on purpose — Google Maps fills in "your location"
+   itself, which is more reliable than anything we could cache. */
+function buildDirectionsLink(lat, lng) {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    return `<a class="popup-directions" href="${url}" target="_blank" rel="noopener noreferrer">Get Directions &rarr;</a>`;
 }
 
 /* ---------- Color palette helper ----------

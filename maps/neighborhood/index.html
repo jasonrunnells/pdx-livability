@@ -20,6 +20,7 @@
         initExplorerMap({
             container: 'map',
             fitBoundsLayer: 'metro',
+            showUserLocation: true,
             layers: [
                 {
                     id: 'metro',
@@ -56,6 +57,7 @@
                     url: '../../data/grocery.geojson',
                     type: 'point',
                     color: '#2e7d32',
+                    directions: true,
                     popup: (p) => buildPopup(p.Name, [
                         { label: 'Category', value: p.Category },
                         { label: 'Address', value: `${p.Address}, ${p.City}, ${p.State} ${p.ZIP}` },
@@ -67,6 +69,7 @@
                     url: '../../data/restaurants.geojson',
                     type: 'point',
                     color: '#c1443c',
+                    directions: true,
                     popup: (p) => buildPopup(p.USER_NAME, [
                         { label: 'Category', value: p.USER_CATEGORY },
                         { label: 'Address', value: `${p.USER_ADDRESS}, ${p.USER_CITY}, ${p.USER_STATE} ${p.USER_ZIP}` }
