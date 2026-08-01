@@ -112,14 +112,29 @@ function buildLayer(data, cfg, resolvedBreaks) {
     const options = { interactive: isInteractive };
 
     if (cfg.type === 'point') {
-        options.pointToLayer = (feature, latlng) => L.circleMarker(latlng, {
-            radius: 6,
-            weight: 1.5,
-            color: '#fff',
-            fillColor: cfg.color || '#111',
-            fillOpacity: 0.9,
-            interactive: isInteractive
-        });
+        options.pointToLayer = (feature, latlng) => {
+            const color = resolveColor(feature.properties, cfg);
+
+            if (cfg.shape === 'square') {
+                const icon = L.divIcon({
+                    className: 'square-marker-icon',
+                    html: `<span style="background:${color}"></span>`,
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7],
+                    popupAnchor: [0, -8]
+                });
+                return L.marker(latlng, { icon: icon, interactive: isInteractive });
+            }
+
+            return L.circleMarker(latlng, {
+                radius: 6,
+                weight: 1.5,
+                color: '#fff',
+                fillColor: color,
+                fillOpacity: 0.9,
+                interactive: isInteractive
+            });
+        };
     } else if (cfg.type === 'polygon') {
         const choroColors = cfg.choropleth
             ? (cfg.choropleth.colors || DEFAULT_CHOROPLETH_COLORS)
@@ -134,11 +149,8 @@ function buildLayer(data, cfg, resolvedBreaks) {
                 const val = feature.properties[cfg.choropleth.property];
                 fillColor = colorForChoropleth(val, breaks, choroColors);
                 borderColor = '#555555';
-            } else if (cfg.colorBy) {
-                fillColor = colorFromPalette(feature.properties[cfg.colorBy], cfg.palette);
-                borderColor = fillColor;
             } else {
-                fillColor = cfg.color || '#111';
+                fillColor = resolveColor(feature.properties, cfg);
                 borderColor = fillColor;
             }
 
@@ -303,6 +315,39 @@ function colorForChoropleth(value, breaks, colors) {
     return colors[colors.length - 1];
 }
 
+/* Bottom-left legend for categorical point layers — e.g. a
+   restaurant marker symbol, then a list of grocery brand colors.
+   Call directly with the map returned from initExplorerMap, since
+   the categories are usually known ahead of time and don't need
+   to wait on the data fetch. Takes a list of sections, each with
+   an optional title and { shape, color, label } items. */
+function addCategoryLegend(map, sections) {
+    const LegendControl = L.Control.extend({
+        options: { position: 'bottomleft' },
+        onAdd: function () {
+            const container = L.DomUtil.create('div', 'map-legend');
+            let html = '';
+
+            sections.forEach(section => {
+                if (section.title) {
+                    html += `<div class="map-legend-title">${section.title}</div>`;
+                }
+
+                section.items.forEach(item => {
+                    const shapeClass = item.shape === 'square' ? 'square' : 'circle';
+                    html += `<div class="map-legend-row"><span class="map-legend-swatch ${shapeClass}" style="background:${item.color}"></span>${item.label}</div>`;
+                });
+            });
+
+            container.innerHTML = html;
+            L.DomEvent.disableClickPropagation(container);
+            return container;
+        }
+    });
+
+    new LegendControl().addTo(map);
+}
+
 /* Bottom-left legend showing each choropleth bucket's color and
    range. Built from the same breaks/colors used to style the
    layer, so it always matches what's on screen. */
@@ -355,6 +400,32 @@ function formatCurrency(v) {
 function formatPercent(v) {
     if (typeof v !== 'number' || isNaN(v)) return null;
     return `${v.toFixed(1)}%`;
+}
+
+/* ---------- Color resolution helper ----------
+   Figures out a feature's color from whichever coloring strategy
+   the layer config uses:
+   - cfg.colorMap: exact { key: color } lookup (predictable, good
+     when you need a legend with fixed labels/colors)
+   - cfg.colorBy / cfg.colorKey: hashed against a palette (good for
+     open-ended sets like place names where you don't want to
+     hand-assign every color)
+   - cfg.color: flat fallback
+   cfg.colorKey(props) can normalize messy source data (typos,
+   inconsistent casing) into a clean key before lookup/hashing;
+   if omitted, cfg.colorBy is used as a plain property name. */
+function resolveColor(props, cfg) {
+    const key = cfg.colorKey ? cfg.colorKey(props) : (cfg.colorBy ? props[cfg.colorBy] : null);
+
+    if (cfg.colorMap) {
+        return cfg.colorMap[key] || cfg.color || '#111';
+    }
+
+    if (key !== null && key !== undefined) {
+        return colorFromPalette(key, cfg.palette);
+    }
+
+    return cfg.color || '#111';
 }
 
 /* ---------- Color palette helper ----------

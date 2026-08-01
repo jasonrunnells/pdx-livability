@@ -17,7 +17,25 @@
 <script src="../../script.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        initExplorerMap({
+
+        const GROCERY_COLORS = {
+            'Whole Foods Market': '#2e7d32',
+            'Natural Grocers': '#f4a261',
+            'New Seasons Market': '#4361ee'
+        };
+
+        // Source data has a couple of typos ("Gorcers", "Season"
+        // singular) — normalize so those still group with the
+        // right brand instead of becoming their own category.
+        const groceryColorKey = (p) => {
+            const raw = (p.Name || '').toLowerCase();
+            if (raw.startsWith('whole foods')) return 'Whole Foods Market';
+            if (raw.startsWith('natural')) return 'Natural Grocers';
+            if (raw.startsWith('new season')) return 'New Seasons Market';
+            return p.Name;
+        };
+
+        const map = initExplorerMap({
             container: 'map',
             fitBoundsLayer: 'metro',
             showUserLocation: true,
@@ -56,7 +74,8 @@
                     id: 'grocery',
                     url: '../../data/grocery.geojson',
                     type: 'point',
-                    color: '#2e7d32',
+                    colorKey: groceryColorKey,
+                    colorMap: GROCERY_COLORS,
                     directions: true,
                     popup: (p) => buildPopup(p.Name, [
                         { label: 'Category', value: p.Category },
@@ -68,6 +87,7 @@
                     id: 'restaurants',
                     url: '../../data/restaurants.geojson',
                     type: 'point',
+                    shape: 'square',
                     color: '#c1443c',
                     directions: true,
                     popup: (p) => buildPopup(p.USER_NAME, [
@@ -77,6 +97,23 @@
                 }
             ]
         });
+
+        addCategoryLegend(map, [
+            {
+                title: 'Restaurants',
+                items: [
+                    { shape: 'square', color: '#c1443c', label: 'Restaurant' }
+                ]
+            },
+            {
+                title: 'Grocery Stores',
+                items: [
+                    { shape: 'circle', color: GROCERY_COLORS['Whole Foods Market'], label: 'Whole Foods Market' },
+                    { shape: 'circle', color: GROCERY_COLORS['Natural Grocers'], label: 'Natural Grocers' },
+                    { shape: 'circle', color: GROCERY_COLORS['New Seasons Market'], label: 'New Seasons Market' }
+                ]
+            }
+        ]);
     });
 </script>
 </body>

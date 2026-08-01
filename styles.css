@@ -277,6 +277,22 @@ html.map-fullscreen #map {
     border: 1px solid rgba(0, 0, 0, .1);
 }
 
+.map-legend-swatch.circle {
+    border-radius: 50%;
+}
+
+.map-legend-swatch.square {
+    border-radius: 0;
+}
+
+.square-marker-icon span {
+    display: block;
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .15);
+}
+
 @media (max-width: 600px) {
     .map-legend {
         font-size: .72rem;
