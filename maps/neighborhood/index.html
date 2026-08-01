@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" class="map-fullscreen">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neighborhood Explorer — Portland Livability</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="../../styles.css">
+</head>
+<body>
+
+<a class="map-back-btn" href="../../index.html">&larr; Home</a>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../../script.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        initExplorerMap({
+            container: 'map',
+            fitBoundsLayer: 'metro',
+            layers: [
+                {
+                    id: 'metro',
+                    url: '../../data/metro.geojson',
+                    type: 'boundary',
+                    color: '#111111'
+                    // context only — no popup, not clickable
+                },
+                {
+                    id: 'places',
+                    url: '../../data/places.geojson',
+                    type: 'polygon',
+                    colorBy: 'NAME',
+                    fillOpacity: 0.12,
+                    popup: (p) => {
+                        const zoning = Object.keys(p)
+                            .filter(k => k.startsWith('ZONE_') && typeof p[k] === 'number' && p[k] > 0)
+                            .map(k => ({ label: k.replace('ZONE_', '').replace(/_/g, ' '), value: p[k] }))
+                            .sort((a, b) => b.value - a.value)
+                            .slice(0, 3)
+                            .map(z => `${z.label} ${z.value.toFixed(0)}%`)
+                            .join(', ');
+
+                        return buildPopup(p.NAME, [
+                            { label: 'School District', value: p.SchoolDist_AVG },
+                            { label: 'Grocery Stores (5mi)', value: p.Grocery_5mi },
+                            { label: 'Grocery Stores (10mi)', value: p.Grocery_10mi },
+                            { label: 'Top Zoning', value: zoning }
+                        ]);
+                    }
+                },
+                {
+                    id: 'grocery',
+                    url: '../../data/grocery.geojson',
+                    type: 'point',
+                    color: '#2e7d32',
+                    popup: (p) => buildPopup(p.Name, [
+                        { label: 'Category', value: p.Category },
+                        { label: 'Address', value: `${p.Address}, ${p.City}, ${p.State} ${p.ZIP}` },
+                        { label: 'Notes', value: p.Notes }
+                    ])
+                },
+                {
+                    id: 'restaurants',
+                    url: '../../data/restaurants.geojson',
+                    type: 'point',
+                    color: '#c1443c',
+                    popup: (p) => buildPopup(p.USER_NAME, [
+                        { label: 'Category', value: p.USER_CATEGORY },
+                        { label: 'Address', value: `${p.USER_ADDRESS}, ${p.USER_CITY}, ${p.USER_STATE} ${p.USER_ZIP}` }
+                    ])
+                }
+            ]
+        });
+    });
+</script>
+</body>
+</html>

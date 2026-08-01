@@ -1,0 +1,317 @@
+@import url('https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@300;400;500;700&display=swap');
+
+/* ---------- RESET ---------- */
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html{
+    scroll-behavior:smooth;
+}
+
+body{
+
+    font-family:"Host Grotesk",sans-serif;
+
+    background:#ffffff;
+    color:#111;
+
+    line-height:1.5;
+
+}
+
+/* ---------- LAYOUT ---------- */
+
+.container{
+
+    width:min(1400px,92%);
+    margin:auto;
+
+    padding:80px 0;
+
+}
+
+/* ---------- TYPOGRAPHY ---------- */
+
+h1{
+
+    font-size:clamp(3rem,7vw,6rem);
+
+    letter-spacing:-3px;
+
+    line-height:.95;
+
+    margin-bottom:1rem;
+
+}
+
+h2{
+
+    font-size:1.7rem;
+
+    letter-spacing:-1px;
+
+    margin-bottom:.5rem;
+
+}
+
+p{
+
+    font-size:1.1rem;
+
+}
+
+.eyebrow{
+
+    text-transform:uppercase;
+
+    font-size:.8rem;
+
+    font-weight:700;
+
+    letter-spacing:2px;
+
+    margin-bottom:1rem;
+
+}
+
+.intro{
+
+    max-width:700px;
+
+    margin-bottom:5rem;
+
+    color:#555;
+
+}
+
+/* ---------- MAP GRID ---------- */
+
+.map-grid{
+
+    display:grid;
+
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+
+    gap:1.5rem;
+
+}
+
+/* ---------- CARDS ---------- */
+
+.map-card{
+
+    text-decoration:none;
+
+    color:inherit;
+
+    border:1px solid #ddd;
+
+    padding:2rem;
+
+    transition:.25s;
+
+    background:#fff;
+
+}
+
+.map-card:hover{
+
+    transform:translateY(-6px);
+
+    border-color:#111;
+
+}
+
+.map-card p{
+
+    color:#666;
+
+}
+
+/* ---------- MAP PAGES ---------- */
+
+.map-page {
+  width: min(1500px, 96%);
+  margin: auto;
+  padding: 2rem 0;
+}
+
+.map-header {
+  margin-bottom: 1.5rem;
+}
+
+.map-header h1 {
+  font-size: clamp(2.5rem, 6vw, 5rem);
+}
+
+.map-header p {
+  max-width: 700px;
+  color: #555;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.map-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1rem;
+}
+
+.map-sidebar {
+  border: 1px solid #ddd;
+  padding: 1.25rem;
+  background: #fff;
+}
+
+.map-sidebar h2 {
+  margin-bottom: 1rem;
+}
+
+.map-sidebar label {
+  display: block;
+  margin-bottom: .75rem;
+  font-size: 1rem;
+}
+
+#map {
+  width: 100%;
+  height: 72vh;
+  min-height: 600px;
+  border: 1px solid #ddd;
+}
+
+.leaflet-popup-content {
+  font-family: "Host Grotesk", sans-serif;
+}
+
+@media (max-width: 900px) {
+  .map-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #map {
+    min-height: 500px;
+    height: 65vh;
+  }
+}
+
+/* ---------- FULLSCREEN EXPLORER MAPS ---------- */
+/* Used by individual map pages (maps/<name>/index.html):
+   no header, no chrome, just the map filling the viewport. */
+
+html.map-fullscreen,
+html.map-fullscreen body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+html.map-fullscreen #map {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.leaflet-control-attribution {
+    font-size: .65rem;
+    background: rgba(255, 255, 255, .8) !important;
+}
+
+.leaflet-control-zoom a {
+    font-family: "Host Grotesk", sans-serif;
+}
+
+.map-back-btn {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    z-index: 1000;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    background: #fff;
+    color: #111;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: .85rem;
+    letter-spacing: -.2px;
+    padding: .6rem 1rem;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+    transition: .2s;
+}
+
+.map-back-btn:hover {
+    border-color: #111;
+}
+
+@media (max-width: 600px) {
+    .map-back-btn {
+        top: .75rem;
+        left: .75rem;
+        padding: .5rem .8rem;
+        font-size: .8rem;
+    }
+}
+
+/* ---------- POPUP CONTENT ---------- */
+
+.popup-card {
+    font-family: "Host Grotesk", sans-serif;
+    min-width: 180px;
+}
+
+.popup-title {
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -.3px;
+    margin-bottom: .5rem;
+}
+
+.popup-row {
+    font-size: .85rem;
+    color: #333;
+    margin-bottom: .35rem;
+}
+
+.popup-row:last-child {
+    margin-bottom: 0;
+}
+
+.popup-label {
+    display: block;
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #888;
+    margin-bottom: 1px;
+}
+
+@media (max-width: 600px) {
+    .leaflet-popup-content {
+        font-size: .9rem;
+    }
+}
+
+/* ---------- MOBILE ---------- */
+
+@media (max-width:768px){
+
+    .container{
+
+        padding:40px 0;
+
+    }
+
+}
