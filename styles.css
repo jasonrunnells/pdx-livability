@@ -234,9 +234,59 @@ html.map-fullscreen #map {
 
 .locate-control a {
     font-size: 1rem;
-    line-height: 26px !important;
+    line-height: 31px !important;
     color: #4285F4;
     text-decoration: none;
+}
+
+.map-legend {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: .75rem 1rem;
+    font-family: "Host Grotesk", sans-serif;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+    font-size: .8rem;
+    color: #333;
+}
+
+.map-legend-title {
+    font-weight: 700;
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #111;
+    margin-bottom: .5rem;
+}
+
+.map-legend-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .3rem;
+}
+
+.map-legend-row:last-child {
+    margin-bottom: 0;
+}
+
+.map-legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid rgba(0, 0, 0, .1);
+}
+
+@media (max-width: 600px) {
+    .map-legend {
+        font-size: .72rem;
+        padding: .6rem .8rem;
+    }
+
+    .map-legend-swatch {
+        width: 12px;
+        height: 12px;
+    }
 }
 
 .map-back-btn {
@@ -294,6 +344,12 @@ html.map-fullscreen #map {
 
 .popup-row:last-child {
     margin-bottom: 0;
+}
+
+.popup-divider {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: .5rem 0;
 }
 
 .popup-directions {

@@ -50,9 +50,36 @@ function initExplorerMap(config) {
             const data = dataList[i];
             if (!data) return;
 
-            const layer = buildLayer(data, layerCfg);
+            let resolvedBreaks = null;
+
+            if (layerCfg.choropleth) {
+                const colors = layerCfg.choropleth.colors || DEFAULT_CHOROPLETH_COLORS;
+
+                // Fixed breaks if given, otherwise fall back to quantiles
+                // computed from the loaded data.
+                resolvedBreaks = (layerCfg.choropleth.breaks && layerCfg.choropleth.breaks.length)
+                    ? layerCfg.choropleth.breaks
+                    : computeQuantileBreaks(data.features, layerCfg.choropleth.property, colors.length);
+            }
+
+            const layer = buildLayer(data, layerCfg, resolvedBreaks);
             layer.addTo(map);
             loadedLayers[layerCfg.id] = layer;
+
+            if (layerCfg.choropleth) {
+                const hasNoData = data.features.some(f => {
+                    const v = f.properties[layerCfg.choropleth.property];
+                    return typeof v !== 'number' || isNaN(v);
+                });
+
+                addChoroplethLegend(map, {
+                    colors: layerCfg.choropleth.colors || DEFAULT_CHOROPLETH_COLORS,
+                    breaks: resolvedBreaks,
+                    format: layerCfg.choropleth.legendFormat || (v => v),
+                    title: layerCfg.choropleth.legendTitle,
+                    showNoData: hasNoData
+                });
+            }
 
             if (layer.getBounds) {
                 const b = layer.getBounds();
@@ -76,7 +103,7 @@ function initExplorerMap(config) {
     return map;
 }
 
-function buildLayer(data, cfg) {
+function buildLayer(data, cfg, resolvedBreaks) {
 
     // "boundary" layers are for context only: no fill, no popup,
     // not clickable/hoverable.
@@ -94,17 +121,33 @@ function buildLayer(data, cfg) {
             interactive: isInteractive
         });
     } else if (cfg.type === 'polygon') {
+        const choroColors = cfg.choropleth
+            ? (cfg.choropleth.colors || DEFAULT_CHOROPLETH_COLORS)
+            : null;
+        const breaks = resolvedBreaks || [];
+
         options.style = (feature) => {
-            const color = cfg.colorBy
-                ? colorFromPalette(feature.properties[cfg.colorBy], cfg.palette)
-                : (cfg.color || '#111');
+            let fillColor;
+            let borderColor;
+
+            if (cfg.choropleth) {
+                const val = feature.properties[cfg.choropleth.property];
+                fillColor = colorForChoropleth(val, breaks, choroColors);
+                borderColor = '#555555';
+            } else if (cfg.colorBy) {
+                fillColor = colorFromPalette(feature.properties[cfg.colorBy], cfg.palette);
+                borderColor = fillColor;
+            } else {
+                fillColor = cfg.color || '#111';
+                borderColor = fillColor;
+            }
 
             return {
-                color: color,
-                weight: 1.2,
-                opacity: 0.55,
-                fillColor: color,
-                fillOpacity: cfg.fillOpacity !== undefined ? cfg.fillOpacity : 0.12,
+                color: borderColor,
+                weight: cfg.choropleth ? 1 : 1.2,
+                opacity: cfg.choropleth ? 0.7 : 0.55,
+                fillColor: fillColor,
+                fillOpacity: cfg.fillOpacity !== undefined ? cfg.fillOpacity : (cfg.choropleth ? 0.55 : 0.12),
                 interactive: isInteractive
             };
         };
@@ -195,7 +238,7 @@ function addLocateControl(map, locationApi) {
             const link = L.DomUtil.create('a', '', container);
             link.href = '#';
             link.title = 'Show my location';
-            link.innerHTML = '&#9673;';
+            link.innerHTML = '&#10070;';
 
             L.DomEvent.disableClickPropagation(container);
             L.DomEvent.on(link, 'click', (e) => {
@@ -228,6 +271,92 @@ function buildDirectionsLink(lat, lng) {
     return `<a class="popup-directions" href="${url}" target="_blank" rel="noopener noreferrer">Get Directions &rarr;</a>`;
 }
 
+/* ---------- Choropleth helpers ----------
+   Classifies polygons into quantile buckets (equal count per
+   bucket) rather than equal-width ranges, so a few extreme
+   outliers don't wash out the color differences everywhere else. */
+const DEFAULT_CHOROPLETH_COLORS = ['#ffffb2', '#fecc5c', '#fd8d3c', '#f03b20', '#bd0026'];
+const NO_DATA_COLOR = '#e2e2e2';
+
+function computeQuantileBreaks(features, property, numClasses) {
+    const values = features
+        .map(f => f.properties[property])
+        .filter(v => typeof v === 'number' && !isNaN(v))
+        .sort((a, b) => a - b);
+
+    if (!values.length) return [];
+
+    const breaks = [];
+    for (let i = 1; i < numClasses; i++) {
+        const idx = Math.min(Math.floor((values.length * i) / numClasses), values.length - 1);
+        breaks.push(values[idx]);
+    }
+    return breaks;
+}
+
+function colorForChoropleth(value, breaks, colors) {
+    if (typeof value !== 'number' || isNaN(value)) return NO_DATA_COLOR;
+
+    for (let i = 0; i < breaks.length; i++) {
+        if (value <= breaks[i]) return colors[i];
+    }
+    return colors[colors.length - 1];
+}
+
+/* Bottom-left legend showing each choropleth bucket's color and
+   range. Built from the same breaks/colors used to style the
+   layer, so it always matches what's on screen. */
+function addChoroplethLegend(map, options) {
+    const { colors, breaks, format, title, showNoData } = options;
+
+    const LegendControl = L.Control.extend({
+        options: { position: 'bottomleft' },
+        onAdd: function () {
+            const container = L.DomUtil.create('div', 'map-legend');
+            let html = '';
+
+            if (title) {
+                html += `<div class="map-legend-title">${title}</div>`;
+            }
+
+            colors.forEach((color, i) => {
+                let label;
+
+                if (i === 0) {
+                    label = `Under ${format(breaks[0])}`;
+                } else if (i === colors.length - 1) {
+                    label = `${format(breaks[breaks.length - 1])}+`;
+                } else {
+                    label = `${format(breaks[i - 1])} \u2013 ${format(breaks[i])}`;
+                }
+
+                html += `<div class="map-legend-row"><span class="map-legend-swatch" style="background:${color}"></span>${label}</div>`;
+            });
+
+            if (showNoData) {
+                html += `<div class="map-legend-row"><span class="map-legend-swatch" style="background:${NO_DATA_COLOR}"></span>No data</div>`;
+            }
+
+            container.innerHTML = html;
+            L.DomEvent.disableClickPropagation(container);
+            return container;
+        }
+    });
+
+    new LegendControl().addTo(map);
+}
+
+/* ---------- Value formatting helpers ---------- */
+function formatCurrency(v) {
+    if (typeof v !== 'number' || isNaN(v)) return null;
+    return `$${Math.round(v).toLocaleString()}`;
+}
+
+function formatPercent(v) {
+    if (typeof v !== 'number' || isNaN(v)) return null;
+    return `${v.toFixed(1)}%`;
+}
+
 /* ---------- Color palette helper ----------
    Deterministically maps a value (e.g. a place name) to a color
    from a palette, so each distinct feature gets its own consistent
@@ -249,11 +378,16 @@ function colorFromPalette(key, palette) {
 
 /* ---------- Popup content helper ----------
    Builds a consistent popup card from a title + list of
-   { label, value } rows. Empty/missing values are skipped. */
+   { label, value } rows. Empty/missing values are skipped.
+   Pass { divider: true } in the rows array to insert a
+   separator line between groups of stats. */
 function buildPopup(title, rows) {
     const rowsHtml = (rows || [])
-        .filter(r => r.value !== undefined && r.value !== null && r.value !== '')
-        .map(r => `<div class="popup-row"><span class="popup-label">${r.label}</span>${r.value}</div>`)
+        .map(r => {
+            if (r.divider) return '<hr class="popup-divider">';
+            if (r.value === undefined || r.value === null || r.value === '') return '';
+            return `<div class="popup-row"><span class="popup-label">${r.label}</span>${r.value}</div>`;
+        })
         .join('');
 
     return `<div class="popup-card"><div class="popup-title">${title || ''}</div>${rowsHtml}</div>`;

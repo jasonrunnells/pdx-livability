@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" class="map-fullscreen">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Census Explorer — Portland Livability</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="../../styles.css">
+</head>
+<body>
+
+<a class="map-back-btn" href="../../index.html">&larr; Home</a>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../../script.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        initExplorerMap({
+            container: 'map',
+            fitBoundsLayer: 'metro',
+            showUserLocation: true,
+            layers: [
+                {
+                    id: 'metro',
+                    url: '../../data/metro.geojson',
+                    type: 'boundary',
+                    color: '#111111'
+                    // context only — no popup, not clickable
+                },
+                {
+                    id: 'census',
+                    url: '../../data/census.geojson',
+                    type: 'polygon',
+                    fillOpacity: 0.55,
+                    choropleth: {
+                        property: 'HOMEVAL_MED',
+                        breaks: [450000, 550000, 650000, 800000],
+                        legendTitle: 'Median Home Value',
+                        legendFormat: (v) => formatCurrency(v)
+                    },
+                    popup: (p) => {
+                        const geoid = String(p.GEOID || '');
+                        const tractCode = geoid.slice(-6);
+                        const tractNumber = tractCode
+                            ? (parseInt(tractCode, 10) / 100).toFixed(2)
+                            : '';
+
+                        return buildPopup(`Census Tract ${tractNumber}`, [
+                            { label: 'Median Home Value', value: formatCurrency(p.HOMEVAL_MED) },
+                            { label: 'Median Mortgage Costs', value: formatCurrency(p.MORT_COST_MED) },
+                            { label: 'Median Mortgage Tax', value: formatCurrency(p.MORT_TAX_MED) },
+                            { label: 'Median Year Built', value: p.YR_BUILT_MED },
+                            { label: 'Median Income', value: formatCurrency(p.INC_HH_MED) },
+                            { label: 'Median Rent', value: formatCurrency(p.RENT_MED) },
+                            { divider: true },
+                            { label: 'Median Age', value: p.AGE_MED },
+                            { label: 'Under 18', value: formatPercent(p.AGE_U18_PCT) },
+                            { label: '18-24', value: formatPercent(p.AGE_18_24_PCT) },
+                            { label: '65+', value: formatPercent(p.AGE_65P_PCT) }
+                        ]);
+                    }
+                }
+            ]
+        });
+    });
+</script>
+</body>
+</html>
