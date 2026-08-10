@@ -14,6 +14,7 @@
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="../../script.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -53,6 +54,7 @@
                     type: 'polygon',
                     colorBy: 'NAME',
                     fillOpacity: 0.12,
+                    labelBy: 'NAME',
                     popup: (p) => {
                         const zoning = Object.keys(p)
                             .filter(k => k.startsWith('ZONE_') && typeof p[k] === 'number' && p[k] > 0)
@@ -89,6 +91,9 @@
                     type: 'point',
                     shape: 'square',
                     color: '#c1443c',
+                    cluster: true,
+                    pane: 'restaurantPane',
+                    paneZIndex: 390,
                     directions: true,
                     popup: (p) => buildPopup(p.USER_NAME, [
                         { label: 'Category', value: p.USER_CATEGORY },

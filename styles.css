@@ -249,6 +249,67 @@ html.map-fullscreen #map {
     color: #333;
 }
 
+.map-layer-toggle {
+    box-sizing: border-box;
+    width: 195px; /* Use the same width as .map-legend */
+    margin-bottom: 0 !important;
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: .65rem 1rem;
+    font-family: "Host Grotesk", sans-serif;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+    font-size: .8rem;
+    color: #333;
+}
+.map-layer-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.map-layer-toggle-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 38px;
+    height: 20px;
+    margin: 0;
+    flex-shrink: 0;
+    position: relative;
+    border: 0;
+    border-radius: 999px;
+    background: #d8d8d8;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.map-layer-toggle-checkbox::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease;
+}
+
+.map-layer-toggle-checkbox:checked {
+    background: #333333;
+}
+
+.map-layer-toggle-checkbox:checked::before {
+    transform: translateX(18px);
+}
+
+.map-layer-toggle-checkbox:focus-visible {
+    outline: 2px solid #333;
+    outline-offset: 2px;
+}
+
 .map-legend-title {
     font-weight: 700;
     font-size: .75rem;
@@ -267,6 +328,22 @@ html.map-fullscreen #map {
 
 .map-legend-row:last-child {
     margin-bottom: 0;
+}
+
+.map-layer-toggle {
+    width: 230px;
+    margin-bottom: 0 !important;
+    border-bottom: 0;
+}
+
+.map-legend {
+    box-sizing: border-box;
+    width: 230px;
+    margin-top: 0 !important;
+}
+
+.map-layer-toggle + .map-legend {
+    border-top: 1px solid #eee;
 }
 
 .map-legend-swatch {
@@ -293,8 +370,63 @@ html.map-fullscreen #map {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, .15);
 }
 
+/* ---------- CLUSTER BUBBLES ---------- */
+
+.cluster-marker-icon {
+    background: transparent;
+    border: none;
+}
+
+.cluster-marker-icon div {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: "Host Grotesk", sans-serif;
+    font-weight: 700;
+    font-size: .85rem;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+    transition: transform .15s;
+}
+
+.cluster-marker-icon div:hover {
+    transform: scale(1.08);
+}
+
+.marker-cluster-spider-leg {
+    opacity: .6;
+}
+
+/* ---------- NEIGHBORHOOD LABELS ---------- */
+
+.neighborhood-label {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    font-family: "Host Grotesk", sans-serif;
+    font-weight: 500;
+    font-size: .75rem;
+    color: #111;
+    text-shadow:
+        -1px -1px 0 #fff, 1px -1px 0 #fff,
+        -1px 1px 0 #fff, 1px 1px 0 #fff,
+        0 0 4px #fff;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.neighborhood-label::before {
+    display: none;
+}
+
 @media (max-width: 600px) {
-    .map-legend {
+    .map-legend,
+    .map-layer-toggle {
         font-size: .72rem;
         padding: .6rem .8rem;
     }

@@ -36,7 +36,8 @@
                     fillOpacity: 0.55,
                     choropleth: {
                         property: 'HOMEVAL_MED',
-                        breaks: [450000, 550000, 650000, 800000],
+                        breaks: [450000, 550000, 650000, 750000, 850000, 950000],
+                        colors: ['#edf8e9', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
                         legendTitle: 'Median Home Value',
                         legendFormat: (v) => formatCurrency(v)
                     },
@@ -61,7 +62,24 @@
                             { label: '65+', value: formatPercent(p.AGE_65P_PCT) }
                         ]);
                     }
-                }
+                },
+                {
+    // Labels remain visible at all times; the red polygon
+    // overlay is controlled separately and starts off.
+    id: 'neighborhoods',
+    url: '../../data/places.geojson',
+    type: 'polygon',
+    interactive: false,
+    color: 'red',
+    fillOpacity: .6,
+    weight: 1,
+    opacity: 1,
+    toggle: {
+        label: 'Neighborhood Boundaries',
+        defaultOn: false
+    },
+    labelBy: 'NAME'
+}
             ]
         });
     });

@@ -17,6 +17,19 @@ function initExplorerMap(config) {
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+    // Custom panes let a layer's stacking position be set explicitly
+    // instead of inheriting Leaflet's fixed pane order (where all
+    // marker icons sit above all vector/circle layers regardless of
+    // add order). Declare one per layer that needs to draw above or
+    // below another layer type via cfg.pane + cfg.paneZIndex.
+    config.layers.forEach(layerCfg => {
+        if (layerCfg.pane && !map.getPane(layerCfg.pane)) {
+            const pane = map.createPane(layerCfg.pane);
+            pane.style.zIndex = layerCfg.paneZIndex || 400;
+            pane.style.pointerEvents = 'auto';
+        }
+    });
+
     if (config.showUserLocation) {
         const locationApi = enableUserLocation(map);
         addLocateControl(map, locationApi);
@@ -46,6 +59,8 @@ function initExplorerMap(config) {
     );
 
     Promise.all(dataLoaders).then(dataList => {
+        const labelUpdaters = [];
+
         config.layers.forEach((layerCfg, i) => {
             const data = dataList[i];
             if (!data) return;
@@ -62,9 +77,32 @@ function initExplorerMap(config) {
                     : computeQuantileBreaks(data.features, layerCfg.choropleth.property, colors.length);
             }
 
-            const layer = buildLayer(data, layerCfg, resolvedBreaks);
-            layer.addTo(map);
-            loadedLayers[layerCfg.id] = layer;
+            const geoLayer = buildLayer(data, layerCfg, resolvedBreaks);
+
+            if (layerCfg.toggle) {
+    const startsOn = layerCfg.toggle.defaultOn === true;
+    setPolygonVisibility(geoLayer, layerCfg, startsOn);
+    addLayerToggle(map, geoLayer, layerCfg);
+}
+
+            // Clustered point layers: individual markers get grouped into
+            // expanding count bubbles at low zoom, and spiderfy out into
+            // their real markers as you zoom/click in — keeps a dense
+            // point layer (like restaurants) readable at the metro scale.
+            let mapLayer = geoLayer;
+            if (layerCfg.cluster && typeof L.markerClusterGroup === 'function') {
+                mapLayer = L.markerClusterGroup({
+                    iconCreateFunction: makeClusterIconFn(layerCfg.color || '#111'),
+                    showCoverageOnHover: false,
+                    spiderfyOnMaxZoom: true,
+                    maxClusterRadius: 50,
+                    clusterPane: layerCfg.pane || 'markerPane'
+                });
+                mapLayer.addLayer(geoLayer);
+            }
+
+            mapLayer.addTo(map);
+            loadedLayers[layerCfg.id] = mapLayer;
 
             if (layerCfg.choropleth) {
                 const hasNoData = data.features.some(f => {
@@ -81,8 +119,14 @@ function initExplorerMap(config) {
                 });
             }
 
-            if (layer.getBounds) {
-                const b = layer.getBounds();
+            // Auto-fit labels: bind a name label to each polygon, but only
+            // let it show once we know whether it actually fits.
+            if (layerCfg.type === 'polygon' && layerCfg.labelBy) {
+                labelUpdaters.push(setupAutoLabels(map, geoLayer, layerCfg));
+            }
+
+            if (mapLayer.getBounds) {
+                const b = mapLayer.getBounds();
                 if (b.isValid()) {
                     combinedBounds = combinedBounds ? combinedBounds.extend(b) : b;
                 }
@@ -98,6 +142,12 @@ function initExplorerMap(config) {
         } else {
             map.setView([45.52, -122.67], 11);
         }
+
+        // Run label placement once now that the map has a real
+        // view/zoom (fitBounds/setView above), then again on every
+        // zoom change since a polygon's on-screen size — and so
+        // whether its label fits — changes with zoom.
+        labelUpdaters.forEach(update => update());
     });
 
     return map;
@@ -106,10 +156,14 @@ function initExplorerMap(config) {
 function buildLayer(data, cfg, resolvedBreaks) {
 
     // "boundary" layers are for context only: no fill, no popup,
-    // not clickable/hoverable.
-    const isInteractive = cfg.type !== 'boundary';
+    // not clickable/hoverable. Any other layer can also opt out of
+    // interactivity via cfg.interactive: false — e.g. a polygon
+    // loaded purely to drive label placement (setupAutoLabels) with
+    // nothing actually drawn on top of it.
+    const isInteractive = cfg.type !== 'boundary' && cfg.interactive !== false;
 
     const options = { interactive: isInteractive };
+    if (cfg.pane) options.pane = cfg.pane;
 
     if (cfg.type === 'point') {
         options.pointToLayer = (feature, latlng) => {
@@ -117,13 +171,13 @@ function buildLayer(data, cfg, resolvedBreaks) {
 
             if (cfg.shape === 'square') {
                 const icon = L.divIcon({
-                    className: 'square-marker-icon',
+                    className: 'square-marker-icon label-obstacle',
                     html: `<span style="background:${color}"></span>`,
                     iconSize: [14, 14],
                     iconAnchor: [7, 7],
                     popupAnchor: [0, -8]
                 });
-                return L.marker(latlng, { icon: icon, interactive: isInteractive });
+                return L.marker(latlng, { icon: icon, interactive: isInteractive, pane: cfg.pane || 'markerPane' });
             }
 
             return L.circleMarker(latlng, {
@@ -132,7 +186,9 @@ function buildLayer(data, cfg, resolvedBreaks) {
                 color: '#fff',
                 fillColor: color,
                 fillOpacity: 0.9,
-                interactive: isInteractive
+                interactive: isInteractive,
+                pane: cfg.pane || 'overlayPane',
+                className: 'label-obstacle'
             });
         };
     } else if (cfg.type === 'polygon') {
@@ -150,14 +206,72 @@ function buildLayer(data, cfg, resolvedBreaks) {
                 fillColor = colorForChoropleth(val, breaks, choroColors);
                 borderColor = '#555555';
             } else {
-                fillColor = resolveColor(feature.properties, cfg);
-                borderColor = fillColor;
+                if (cfg.toggle) {
+    const neighborhoodColors = [
+        '#e63946',
+        '#f4a261',
+        '#e9c46a',
+        '#2a9d8f',
+        '#457b9d',
+        '#8e7dbe',
+        '#e76f9a',
+        '#70a288'
+    ];
+
+    const neighborhoodName = feature.properties.NAME || '';
+    let colorIndex = 0;
+
+    // Creates a consistent color from each neighborhood's name
+    for (let i = 0; i < neighborhoodName.length; i++) {
+        colorIndex =
+            (colorIndex + neighborhoodName.charCodeAt(i)) %
+            neighborhoodColors.length;
+    }
+
+    fillColor = neighborhoodColors[colorIndex];
+    borderColor = '#000000';
+} else {
+    fillColor = resolveColor(feature.properties, cfg);
+    borderColor = fillColor;
+}
+                if (cfg.toggle) {
+    const neighborhoodColors = [
+        '#e63946',
+        '#f4a261',
+        '#e9c46a',
+        '#2a9d8f',
+        '#457b9d',
+        '#8e7dbe',
+        '#e76f9a',
+        '#70a288'
+    ];
+
+    const neighborhoodName = feature.properties.NAME || '';
+    let colorIndex = 0;
+
+    // Creates a consistent color from each neighborhood's name
+    for (let i = 0; i < neighborhoodName.length; i++) {
+        colorIndex =
+            (colorIndex + neighborhoodName.charCodeAt(i)) %
+            neighborhoodColors.length;
+    }
+
+    fillColor = neighborhoodColors[colorIndex];
+    borderColor = '#000000';
+} else {
+    fillColor = resolveColor(feature.properties, cfg);
+    borderColor = fillColor;
+}
             }
 
             return {
                 color: borderColor,
-                weight: cfg.choropleth ? 1 : 1.2,
-                opacity: cfg.choropleth ? 0.7 : 0.55,
+                // Both fall back to the previous fixed defaults, but
+                // can be overridden per layer — e.g. weight: 0 to draw
+                // a fully invisible polygon that still exists for
+                // label placement to reference.
+                weight: cfg.weight !== undefined ? cfg.weight : (cfg.choropleth ? 1 : 1.2),
+                opacity: cfg.opacity !== undefined ? cfg.opacity : (cfg.choropleth ? 0.7 : 0.55),
                 fillColor: fillColor,
                 fillOpacity: cfg.fillOpacity !== undefined ? cfg.fillOpacity : (cfg.choropleth ? 0.55 : 0.12),
                 interactive: isInteractive
@@ -190,6 +304,264 @@ function buildLayer(data, cfg, resolvedBreaks) {
     }
 
     return layer;
+}
+
+/* ---------- Optional polygon toggle ----------
+   Keeps a polygon layer on the map so it can continue to drive
+   permanent labels while independently showing or hiding its fill
+   and border. */
+function setPolygonVisibility(layer, cfg, isVisible) {
+    layer.setStyle({
+        opacity: isVisible
+            ? (cfg.opacity !== undefined ? cfg.opacity : 0.55)
+            : 0,
+        fillOpacity: isVisible
+            ? (cfg.fillOpacity !== undefined ? cfg.fillOpacity : 0.12)
+            : 0
+    });
+}
+
+function addLayerToggle(map, layer, cfg) {
+    const ToggleControl = L.Control.extend({
+        options: {
+            position: cfg.toggle.position || 'bottomleft'
+        },
+
+        onAdd: function () {
+            const container = L.DomUtil.create(
+                'div',
+                'map-layer-toggle'
+            );
+
+            const label = L.DomUtil.create(
+                'label',
+                'map-layer-toggle-label',
+                container
+            );
+
+            const checkbox = L.DomUtil.create(
+                'input',
+                'map-layer-toggle-checkbox',
+                label
+            );
+
+           
+           
+           
+           
+           
+
+            const text = L.DomUtil.create('span', '', label);
+
+            checkbox.type = 'checkbox';
+            checkbox.checked = cfg.toggle.defaultOn === true;
+            checkbox.setAttribute('aria-label', cfg.toggle.label);
+
+           
+           
+            text.textContent = cfg.toggle.label;
+
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.disableScrollPropagation(container);
+
+            L.DomEvent.on(checkbox, 'change', () => {
+                setPolygonVisibility(
+                    layer,
+                    cfg,
+                    checkbox.checked
+                );
+            });
+
+            return container;
+        }
+    });
+
+    new ToggleControl().addTo(map);
+}
+
+/* ---------- Cluster icon helper ----------
+   Builds the iconCreateFunction for a clustered point layer: a
+   solid circle in the layer's color with the cluster's point
+   count, sized up a bit as the count grows. Clicking a bubble
+   zooms in (Leaflet.markercluster's default behavior); once
+   zoomed past maxClusterRadius, bubbles split apart into the
+   individual markers underneath. */
+function makeClusterIconFn(color) {
+    return function (cluster) {
+        const count = cluster.getChildCount();
+
+        let size = 36;
+        if (count >= 10) size = 42;
+        if (count >= 25) size = 50;
+        if (count >= 50) size = 58;
+
+        return L.divIcon({
+            html: `<div style="background:${color}">${count}</div>`,
+            className: 'cluster-marker-icon label-obstacle',
+            iconSize: [size, size]
+        });
+    };
+}
+
+/* ---------- Auto-fit neighborhood labels ----------
+   Binds a permanent tooltip (the neighborhood name) to every
+   feature in a polygon layer, then decides — on every zoom change —
+   where and whether each one actually shows:
+     1. A label only shows if the polygon's on-screen box is big
+        enough to hold the text at all (so tiny slivers at low zoom
+        don't get a name crammed into them).
+     2. It tries the polygon's center first, then a few offset spots
+        toward the edges, and uses whichever one doesn't overlap a
+        point marker (grocery/restaurant) or a label that's already
+        been placed.
+     3. Bigger polygons get first pick of screen space; a label is
+        dropped if none of its candidate spots are free.
+   Returns an `update()` function the caller re-runs after the map's
+   view is set, and again on every zoomend (screen size — and what's
+   nearby — changes with zoom). */
+const LABEL_FONT = '500 12px "Host Grotesk", sans-serif';
+let labelMeasureCtx = null;
+
+function measureTextWidth(text) {
+    if (!labelMeasureCtx) {
+        labelMeasureCtx = document.createElement('canvas').getContext('2d');
+        labelMeasureCtx.font = LABEL_FONT;
+    }
+    return labelMeasureCtx.measureText(text).width;
+}
+
+function setupAutoLabels(map, geoLayer, cfg) {
+    const labelFeatures = [];
+
+    geoLayer.eachLayer(featureLayer => {
+        const name = featureLayer.feature.properties[cfg.labelBy];
+        if (!name || typeof featureLayer.getBounds !== 'function') return;
+
+        featureLayer.bindTooltip(String(name), {
+            permanent: true,
+            direction: 'center',
+            className: 'neighborhood-label',
+            interactive: false
+        });
+
+        labelFeatures.push({ layer: featureLayer, name: String(name) });
+    });
+
+    function rectsOverlap(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    }
+
+    // Real screen positions of every visible point marker (grocery dots,
+    // restaurant pins/cluster bubbles) right now, so labels can dodge them
+    // instead of just dodging each other.
+    function collectMarkerObstacles() {
+        const mapRect = map.getContainer().getBoundingClientRect();
+        const els = map.getContainer().querySelectorAll('.label-obstacle');
+        const rects = [];
+
+        els.forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) return;
+            rects.push({
+                left: r.left - mapRect.left,
+                right: r.right - mapRect.left,
+                top: r.top - mapRect.top,
+                bottom: r.bottom - mapRect.top
+            });
+        });
+
+        return rects;
+    }
+
+    // Candidate offsets to try within a polygon's box, as fractions of its
+    // half-width/half-height — center first, then out toward each side and
+    // corner, so a label prefers the middle but will shift if something's
+    // in the way.
+    const CANDIDATE_OFFSETS = [
+        [0, 0],
+        [0, -0.35], [0, 0.35], [-0.3, 0], [0.3, 0],
+        [-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]
+    ];
+
+    function update() {
+        const placedRects = [];
+        const markerObstacles = collectMarkerObstacles();
+
+        // Measure every candidate's on-screen box first, then place
+        // biggest-polygon-first so small neighborhoods yield space to
+        // large ones instead of whoever happens to iterate first.
+        const measured = labelFeatures.map(item => {
+            const bounds = item.layer.getBounds();
+            const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+            const se = map.latLngToContainerPoint(bounds.getSouthEast());
+            return {
+                ...item,
+                boxWidth: Math.abs(se.x - nw.x),
+                boxHeight: Math.abs(se.y - nw.y),
+                center: map.latLngToContainerPoint(bounds.getCenter())
+            };
+        });
+
+        measured.sort((a, b) => (b.boxWidth * b.boxHeight) - (a.boxWidth * a.boxHeight));
+
+        measured.forEach(item => {
+            const textWidth = measureTextWidth(item.name);
+            const textHeight = 14;
+            const padding = 10;
+            const halfW = item.boxWidth / 2;
+            const halfH = item.boxHeight / 2;
+
+            const fitsBasicSize = item.boxWidth >= textWidth + padding && item.boxHeight >= textHeight + padding;
+
+            if (!fitsBasicSize) {
+                item.layer.closeTooltip();
+                return;
+            }
+
+            let chosen = null;
+
+            for (const [dx, dy] of CANDIDATE_OFFSETS) {
+                const cx = item.center.x + dx * halfW;
+                const cy = item.center.y + dy * halfH;
+
+                const rect = {
+                    left: cx - textWidth / 2 - 2,
+                    right: cx + textWidth / 2 + 2,
+                    top: cy - textHeight / 2 - 1,
+                    bottom: cy + textHeight / 2 + 1
+                };
+
+                // Stay inside the polygon's own box — an offset spot
+                // that's technically clear but sticks outside the shape
+                // isn't a real fit.
+                const withinBox =
+                    rect.left >= item.center.x - halfW && rect.right <= item.center.x + halfW &&
+                    rect.top >= item.center.y - halfH && rect.bottom <= item.center.y + halfH;
+
+                if (!withinBox) continue;
+                if (markerObstacles.some(o => rectsOverlap(rect, o))) continue;
+                if (placedRects.some(p => rectsOverlap(rect, p))) continue;
+
+                chosen = { rect, point: L.point(cx, cy) };
+                break;
+            }
+
+            if (!chosen) {
+                item.layer.closeTooltip();
+                return;
+            }
+
+            placedRects.push(chosen.rect);
+
+            const tooltip = item.layer.getTooltip();
+            if (tooltip) tooltip.setLatLng(map.containerPointToLatLng(chosen.point));
+
+            item.layer.openTooltip();
+        });
+    }
+
+    map.on('zoomend', update);
+    return update;
 }
 
 /* ---------- User location ----------
