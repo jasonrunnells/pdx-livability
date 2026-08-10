@@ -331,14 +331,14 @@ html.map-fullscreen #map {
 }
 
 .map-layer-toggle {
-    width: 230px;
+    width: 195px;
     margin-bottom: 0 !important;
     border-bottom: 0;
 }
 
 .map-legend {
     box-sizing: border-box;
-    width: 230px;
+    width: auto;
     margin-top: 0 !important;
 }
 

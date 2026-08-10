@@ -208,7 +208,7 @@ function buildLayer(data, cfg, resolvedBreaks) {
             } else {
                 if (cfg.toggle) {
     const neighborhoodColors = [
-        '#e63946',
+        '#e63946',   
         '#f4a261',
         '#e9c46a',
         '#2a9d8f',
