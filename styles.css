@@ -255,6 +255,7 @@ html.map-fullscreen #map {
     margin-bottom: 0 !important;
     background: #fff;
     border: 1px solid #ddd;
+    border-bottom: none;
     padding: .65rem 1rem;
     font-family: "Host Grotesk", sans-serif;
     box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
