@@ -35,13 +35,16 @@ function initExplorerMap(config) {
         addLocateControl(map, locationApi);
     }
 
-    // Minimal light basemap, no labels, so the data layers stay
-    // the most prominent thing on screen.
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
+
+L.tileLayer(
+    'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    {
+        attribution: 'Tiles &copy; Esri — Esri, DeLorme, NAVTEQ',
+        maxNativeZoom: 16,
         maxZoom: 19
-    }).addTo(map);
+    }
+).addTo(map);
+
 
     const loadedLayers = {};
     let combinedBounds = null;
