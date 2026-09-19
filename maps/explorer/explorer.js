@@ -1,6 +1,23 @@
-/* This map is self-contained. Existing map pages keep using the shared script unchanged. */
+/* Portland Explorer: map, labels, location control, and layer behavior. */
+(() => {
+'use strict';
+
+function initExplorerMap() {
+    const map=L.map('map',{zoomControl:false,minZoom:8,maxZoom:19});
+    L.control.zoom({position:'bottomright'}).addTo(map);
+    const locationApi=enableUserLocation(map);
+    addLocateControl(map,locationApi);
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{
+        attribution:'Tiles &copy; Esri — Esri, DeLorme, NAVTEQ',
+        maxNativeZoom:16,
+        maxZoom:19
+    }).addTo(map);
+    map.setView([45.52,-122.67],11);
+    return map;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    const map = initExplorerMap({container:'map',showUserLocation:true,layers:[]});
+    const map = initExplorerMap();
     const specs = [
         {id:'neighborhoods', label:'Neighborhoods', file:'neighborhoods.geojson', pane:410, color:'#59a6a5'},
         {id:'cities', label:'Cities', file:'cities.geojson', pane:420, color:'#5d81b5'},
@@ -78,9 +95,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }else if(spec.id==='cities'){
             layer=polygonLayer(data,spec,{
                 style:()=>({color:'#2d486c',weight:1.4,fillColor:spec.color,fillOpacity:.07}),
-                onEachFeature:(f,l)=>{l.bindPopup(card(f.properties.NAME,''));
-                    l.bindTooltip(String(f.properties.NAME||''),{permanent:true,direction:'center',className:'explorer-city-label',interactive:false});}
+                onEachFeature:(f,l)=>l.bindPopup(card(f.properties.NAME,''))
             });
+            layer.updateLabels=setupAutoLabels(map,layer,{
+                labelBy:'NAME',
+                labelClass:'explorer-city-label',
+                labelFont:'700 12px "Host Grotesk", sans-serif'
+            });
+            map.on('moveend',()=>{if(map.hasLayer(layer))layer.updateLabels();});
         }else if(spec.id==='census'){
             layer=polygonLayer(data,spec,{
                 style:()=>({color:'#8b705c',weight:1,opacity:.8,fillColor:spec.color,fillOpacity:.10}),
@@ -122,3 +144,234 @@ document.addEventListener('DOMContentLoaded', () => {
         data.catch(err=>error(spec,err));
     });
 });
+
+
+/* Neighborhood labels and geolocation controls, previously in the root script. */
+const LABEL_FONT = '500 12px "Host Grotesk", sans-serif';
+let labelMeasureCtx = null;
+
+function measureTextWidth(text, font=LABEL_FONT) {
+    if (!labelMeasureCtx) {
+        labelMeasureCtx = document.createElement('canvas').getContext('2d');
+    }
+    labelMeasureCtx.font = font;
+    return labelMeasureCtx.measureText(text).width;
+}
+
+function setupAutoLabels(map, geoLayer, cfg) {
+    const labelFeatures = [];
+
+    geoLayer.eachLayer(featureLayer => {
+        const name = featureLayer.feature.properties[cfg.labelBy];
+        if (!name || typeof featureLayer.getBounds !== 'function') return;
+
+        featureLayer.bindTooltip(String(name), {
+            permanent: true,
+            direction: 'center',
+            className: cfg.labelClass || 'neighborhood-label',
+            interactive: false
+        });
+
+        labelFeatures.push({ layer: featureLayer, name: String(name) });
+    });
+
+    function rectsOverlap(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    }
+
+    // Real screen positions of every visible point marker (grocery dots,
+    // restaurant pins/cluster bubbles) right now, so labels can dodge them
+    // instead of just dodging each other.
+    function collectMarkerObstacles() {
+        const mapRect = map.getContainer().getBoundingClientRect();
+        const els = map.getContainer().querySelectorAll('.label-obstacle');
+        const rects = [];
+
+        els.forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) return;
+            rects.push({
+                left: r.left - mapRect.left,
+                right: r.right - mapRect.left,
+                top: r.top - mapRect.top,
+                bottom: r.bottom - mapRect.top
+            });
+        });
+
+        return rects;
+    }
+
+    // Candidate offsets to try within a polygon's box, as fractions of its
+    // half-width/half-height — center first, then out toward each side and
+    // corner, so a label prefers the middle but will shift if something's
+    // in the way.
+    const CANDIDATE_OFFSETS = [
+        [0, 0],
+        [0, -0.35], [0, 0.35], [-0.3, 0], [0.3, 0],
+        [-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]
+    ];
+
+    function update() {
+        if (!map.hasLayer(geoLayer)) return;
+        const placedRects = [];
+        const markerObstacles = collectMarkerObstacles();
+
+        // Measure every candidate's on-screen box first, then place
+        // biggest-polygon-first so small neighborhoods yield space to
+        // large ones instead of whoever happens to iterate first.
+        const measured = labelFeatures.map(item => {
+            const bounds = item.layer.getBounds();
+            const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+            const se = map.latLngToContainerPoint(bounds.getSouthEast());
+            return {
+                ...item,
+                boxWidth: Math.abs(se.x - nw.x),
+                boxHeight: Math.abs(se.y - nw.y),
+                center: map.latLngToContainerPoint(bounds.getCenter())
+            };
+        });
+
+        measured.sort((a, b) => (b.boxWidth * b.boxHeight) - (a.boxWidth * a.boxHeight));
+
+        measured.forEach(item => {
+            const textWidth = measureTextWidth(item.name, cfg.labelFont || LABEL_FONT);
+            const textHeight = 14;
+            const padding = 10;
+            const halfW = item.boxWidth / 2;
+            const halfH = item.boxHeight / 2;
+
+            const fitsBasicSize = item.boxWidth >= textWidth + padding && item.boxHeight >= textHeight + padding;
+
+            if (!fitsBasicSize) {
+                item.layer.closeTooltip();
+                return;
+            }
+
+            let chosen = null;
+
+            for (const [dx, dy] of CANDIDATE_OFFSETS) {
+                const cx = item.center.x + dx * halfW;
+                const cy = item.center.y + dy * halfH;
+
+                const rect = {
+                    left: cx - textWidth / 2 - 2,
+                    right: cx + textWidth / 2 + 2,
+                    top: cy - textHeight / 2 - 1,
+                    bottom: cy + textHeight / 2 + 1
+                };
+
+                // Stay inside the polygon's own box — an offset spot
+                // that's technically clear but sticks outside the shape
+                // isn't a real fit.
+                const withinBox =
+                    rect.left >= item.center.x - halfW && rect.right <= item.center.x + halfW &&
+                    rect.top >= item.center.y - halfH && rect.bottom <= item.center.y + halfH;
+
+                if (!withinBox) continue;
+                if (markerObstacles.some(o => rectsOverlap(rect, o))) continue;
+                if (placedRects.some(p => rectsOverlap(rect, p))) continue;
+
+                chosen = { rect, point: L.point(cx, cy) };
+                break;
+            }
+
+            if (!chosen) {
+                item.layer.closeTooltip();
+                return;
+            }
+
+            placedRects.push(chosen.rect);
+
+            // Pass the chosen position to openTooltip itself. Calling it without
+            // a position resets a polygon tooltip to its default center.
+            item.layer.openTooltip(map.containerPointToLatLng(chosen.point));
+        });
+    }
+
+    map.on('zoomend', update);
+    return update;
+}
+
+/* ---------- User location ----------
+   Watches the browser's geolocation and keeps a "you are here"
+   dot (with an accuracy halo) in sync on the map. Returns an
+   object exposing the last known position for other controls. */
+function enableUserLocation(map) {
+    if (!navigator.geolocation) {
+        return { getLatLng: () => null };
+    }
+
+    let marker = null;
+    let accuracyCircle = null;
+    let lastLatLng = null;
+
+    navigator.geolocation.watchPosition(
+        (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            lastLatLng = L.latLng(latitude, longitude);
+
+            if (!marker) {
+                accuracyCircle = L.circle(lastLatLng, {
+                    radius: accuracy,
+                    weight: 0,
+                    fillColor: '#4285F4',
+                    fillOpacity: 0.12,
+                    interactive: false
+                }).addTo(map);
+
+                marker = L.circleMarker(lastLatLng, {
+                    radius: 7,
+                    weight: 2,
+                    color: '#fff',
+                    fillColor: '#4285F4',
+                    fillOpacity: 1,
+                    interactive: false
+                }).addTo(map);
+            } else {
+                marker.setLatLng(lastLatLng);
+                accuracyCircle.setLatLng(lastLatLng);
+                accuracyCircle.setRadius(accuracy);
+            }
+        },
+        (err) => console.warn('Geolocation unavailable:', err.message),
+        { enableHighAccuracy: true, maximumAge: 15000 }
+    );
+
+    return { getLatLng: () => lastLatLng };
+}
+
+/* Small "center on my location" button, styled to match Leaflet's
+   own zoom control so it fits right in above it. */
+function addLocateControl(map, locationApi) {
+    const LocateControl = L.Control.extend({
+        options: { position: 'bottomright' },
+        onAdd: function () {
+            const container = L.DomUtil.create('div', 'leaflet-bar locate-control');
+            const link = L.DomUtil.create('a', '', container);
+            link.href = '#';
+            link.title = 'Show my location';
+            link.innerHTML = '&#10070;';
+
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.on(link, 'click', (e) => {
+                L.DomEvent.preventDefault(e);
+                const ll = locationApi.getLatLng();
+
+                if (ll) {
+                    map.setView(ll, 15);
+                } else if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 15),
+                        (err) => console.warn('Geolocation unavailable:', err.message)
+                    );
+                }
+            });
+
+            return container;
+        }
+    });
+
+    new LocateControl().addTo(map);
+}
+
+})();
