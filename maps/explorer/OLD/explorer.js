@@ -18,72 +18,23 @@ function initExplorerMap() {
 
 document.addEventListener('DOMContentLoaded', () => {
     const map = initExplorerMap();
-    let closeLayerPanel=()=>{};
-    const mobilePopup=window.matchMedia('(max-width: 600px)');
-    const bottomSheet=document.createElement('section');
-    bottomSheet.className='map-bottom-sheet';
-    bottomSheet.setAttribute('aria-hidden','true');
-    bottomSheet.innerHTML='<div class="map-bottom-sheet-handle" aria-hidden="true"></div><button type="button" class="map-bottom-sheet-close" aria-label="Close details">&times;</button><div class="map-bottom-sheet-content"></div>';
-    document.body.appendChild(bottomSheet);
-    const closeBottomSheet=()=>{
-        bottomSheet.classList.remove('is-open');
-        bottomSheet.setAttribute('aria-hidden','true');
-    };
-    bottomSheet.querySelector('.map-bottom-sheet-close').addEventListener('click',closeBottomSheet);
-    document.addEventListener('pointerdown',event=>{
-        if(bottomSheet.classList.contains('is-open')&&!bottomSheet.contains(event.target))closeBottomSheet();
-    });
-    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeBottomSheet();});
-    L.DomEvent.disableClickPropagation(bottomSheet);
-    L.DomEvent.disableScrollPropagation(bottomSheet);
-    map.on('popupopen',event=>{
-        if(!mobilePopup.matches)return;
-        closeLayerPanel();
-        const content=event.popup.getContent();
-        map.closePopup(event.popup);
-        bottomSheet.querySelector('.map-bottom-sheet-content').innerHTML=typeof content==='string'?content:'';
-        bottomSheet.scrollTop=0;
-        bottomSheet.setAttribute('aria-hidden','false');
-        requestAnimationFrame(()=>bottomSheet.classList.add('is-open'));
-    });
-    mobilePopup.addEventListener?.('change',event=>{if(!event.matches)closeBottomSheet();});
     const specs = [
-        {id:'neighborhoods', label:'Neighborhoods', file:'neighborhoods.geojson', pane:410, color:'#1FFF96'},
-        {id:'cities', label:'Cities', file:'cities.geojson', pane:420, color:'#1F88FF'},
-        {id:'census', label:'Census tracts', file:'census.geojson', pane:430, color:'#961FFF'},
-        {id:'grocery', label:'Grocery stores', file:'grocery.geojson', pane:450, color:'#1FFF96'},
-        {id:'restaurants', label:'Restaurants', file:'restaurants.geojson', pane:460, color:'#FF1F88'},
-        {id:'observations', label:'Sept 2026 observations', file:'observations.geojson', pane:470, color:'#FF961F'}
+        {id:'neighborhoods', label:'Neighborhoods', file:'neighborhoods.geojson', pane:410, color:'#68CBB0'},
+        {id:'cities', label:'Cities', file:'cities.geojson', pane:420, color:'#343ABB'},
+        {id:'census', label:'Census tracts', file:'census.geojson', pane:430, color:'#D99F37'},
+        {id:'grocery', label:'Grocery stores', file:'grocery.geojson', pane:450, color:'#1E723B'},
+        {id:'restaurants', label:'Restaurants', file:'restaurants.geojson', pane:460, color:'#FC501E'},
+        {id:'observations', label:'Sept 2026 observations', file:'observations.geojson', pane:470, color:'#211E1E'}
     ];
     const groups = {};
     const inputs = {};
     const exclusiveAreas = ['neighborhoods', 'cities', 'census'];
     const exclusivePlaces = ['grocery', 'restaurants', 'observations'];
     const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const titleCase = value => String(value ?? '').toLocaleLowerCase().replace(/\b\p{L}/gu,letter=>letter.toLocaleUpperCase());
     const money = value => Number.isFinite(Number(value)) && value !== null && value !== '' ? '$'+Math.round(Number(value)).toLocaleString() : 'No data';
     const number = value => value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US',{maximumFractionDigits:1}) : 'No data';
-    const row = (name,value) => value == null || value === '' ? '' : `<div class="popup-row"><span class="popup-label">${safe(name)}</span><span class="popup-value">${safe(value)}</span></div>`;
+    const row = (name,value) => value == null || value === '' ? '' : `<div class="popup-row"><span class="popup-label">${safe(name)}</span>${safe(value)}</div>`;
     const card = (title,contents) => `<div class="popup-card"><div class="popup-title">${safe(title)}</div>${contents}</div>`;
-    const sparkline = series => {
-        const values=[];
-        for(let year=2020;year<=2026;year++){
-            const value=series?.[`${year}-08-31`];
-            if(Number.isFinite(Number(value)))values.push({year,value:Number(value)});
-        }
-        if(values.length<2)return '';
-        const min=Math.min(...values.map(d=>d.value));
-        const max=Math.max(...values.map(d=>d.value));
-        const span=max-min||1;
-        const points=values.map((d,i)=>({
-            ...d,
-            x:12+i*(216/(values.length-1)),
-            y:66-((d.value-min)/span)*48
-        }));
-        const linePoints=points.map(d=>`${d.x},${d.y}`).join(' ');
-        return `<div class="value-chart" aria-label="Home value trend from ${values[0].year} to ${values.at(-1).year}"><svg viewBox="0 0 240 78" role="img"><line x1="12" y1="66" x2="228" y2="66"></line><polyline points="${linePoints}"></polyline>${points.map(d=>`<circle cx="${d.x}" cy="${d.y}" r="3.5"></circle>`).join('')}</svg><div class="value-chart-years"><span>${values[0].year}</span><span>${values.at(-1).year}</span></div></div>`;
-    };
-    const neighborhoodCard=(p,now,pct,fiveYearChange,series)=>`<div class="neighborhood-card"><div class="popup-title">${safe(p.Name)}</div><div class="neighborhood-city"><span>City</span><strong>${safe(titleCase(p.City||'No data'))}</strong></div><div class="home-value"><span>Typical home value · Aug 2026</span><strong>${money(now)}</strong></div><div class="change-grid"><div><span>Since Aug 2025</span><strong>${safe(pct||'No data')}</strong></div><div><span>Since Aug 2021</span><strong>${safe(fiveYearChange||'No data')}</strong></div></div>${sparkline(series)}</div>`;
     const fetchJSON = async filename => {const res=await fetch('data/'+filename);if(!res.ok)throw Error(`${filename}: HTTP ${res.status}`);return res.json();};
     const note = document.createElement('div'); note.className='explorer-error'; note.setAttribute('role','status');
     for(const spec of specs){const pane=map.createPane('explorer-'+spec.id);pane.style.zIndex=String(spec.pane);}
@@ -91,10 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const el=L.DomUtil.create('div','explorer-layers');
         const panelId='explorer-layer-list';
         el.innerHTML=`<button type="button" class="explorer-collapse" aria-label="Show or hide map layers" aria-expanded="true" aria-controls="${panelId}">`+
-            '<span class="explorer-launch-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></span><span class="explorer-panel-title">Map layers</span>'+
-            '<span class="explorer-control-action" aria-hidden="true"></span></button>'+
+            '<span class="explorer-product"><span class="explorer-product-mark" aria-hidden="true"></span><span><strong>PORTLAND</strong><small>City explorer</small></span></span>'+
+            '<span class="explorer-control-action" aria-hidden="true"><span class="explorer-chevron"></span></span></button>'+
             `<div class="explorer-panel" id="${panelId}">`+
-            specs.map(s=>`<label class="explorer-row${s.id==='grocery'?' explorer-divider':''}"><input type="checkbox" data-layer="${s.id}" aria-label="Show ${safe(s.label)}" disabled><span class="explorer-layer-name">${safe(s.label)}</span></label>`).join('')+
+            specs.map(s=>`<label class="explorer-row${s.id==='grocery'?' explorer-divider':''}" style="--layer-color:${s.color}"><span class="explorer-layer-name">${safe(s.label)}</span><input type="checkbox" data-layer="${s.id}" aria-label="Show ${safe(s.label)}" disabled></label>`).join('')+
             '</div>';
         const panel=el.querySelector('.explorer-panel');
         const collapse=el.querySelector('.explorer-collapse');
@@ -104,8 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             el.classList.toggle('is-collapsed',!open);
             collapse.setAttribute('aria-expanded',String(open));
         };
-        closeLayerPanel=()=>setOpen(false);
-        setOpen(false);
+        setOpen(!window.matchMedia('(max-width: 600px)').matches);
         collapse.addEventListener('click',()=>setOpen(panel.hidden));
         el.querySelectorAll('input').forEach(input=>{inputs[input.dataset.layer]=input;input.addEventListener('change',()=>{
             const layer=groups[input.dataset.layer];if(!layer)return;
@@ -125,7 +75,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return el;
     }});
     new LayerControl().addTo(map);
-    map.on('click',closeLayerPanel);
     function error(spec,err){console.error('Map layer error',spec.id,err);note.textContent+=`${spec.label} could not load. `;inputs[spec.id].closest('label').title=String(err);}
     function polygonLayer(data,spec,options){return L.geoJSON(data,{...options,pane:'explorer-'+spec.id});}
     function setup(spec,data,history={}){
@@ -139,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const fiveYearsAgo=history[String(p.RegionID)]?.['2021-08-31'];
                     const pct=now!=null&&prior?`${((now/prior-1)*100).toFixed(1)}%`:null;
                     const fiveYearChange=now!=null&&fiveYearsAgo?`${((now/fiveYearsAgo-1)*100).toFixed(1)}%`:null;
-                    l.bindPopup(neighborhoodCard(p,now,pct,fiveYearChange,history[String(p.RegionID)]),{className:'app-popup neighborhood-popup',maxWidth:320});
+                    l.bindPopup(card(p.Name,row('City',p.City)+row('Typical Home Value · Aug 2026',money(now))+row('Change since Aug 2025',pct)+row('Change since Aug 2021',fiveYearChange)));
                 }
             });
             // Permanent labels belong to the layer; removing it hides the labels too.
@@ -147,25 +96,25 @@ document.addEventListener('DOMContentLoaded', () => {
             map.on('moveend',()=>{if(map.hasLayer(layer))layer.updateLabels();});
         }else if(spec.id==='cities'){
             layer=polygonLayer(data,spec,{
-                style:()=>({color:spec.color,weight:1.4,fillColor:spec.color,fillOpacity:.08}),
+                style:()=>({color:'#343ABB',weight:1.4,fillColor:spec.color,fillOpacity:.08}),
                 onEachFeature:(f,l)=>l.bindPopup(card(f.properties.NAME,''))
             });
             layer.updateLabels=setupAutoLabels(map,layer,{
                 labelBy:'NAME',
                 labelClass:'explorer-city-label',
-                labelFont:'700 12px Inter, Arial, sans-serif'
+                labelFont:'700 12px "Host Grotesk", sans-serif'
             });
             map.on('moveend',()=>{if(map.hasLayer(layer))layer.updateLabels();});
         }else if(spec.id==='census'){
             layer=polygonLayer(data,spec,{
-                style:()=>({color:spec.color,weight:1,opacity:.9,fillColor:spec.color,fillOpacity:.12}),
+                style:()=>({color:'#D99F37',weight:1,opacity:.9,fillColor:spec.color,fillOpacity:.12}),
                 onEachFeature:(f,l)=>{const p=f.properties;l.bindPopup(card('Census tract '+String(p.GEOID||'').slice(-6),
                     row('Population',number(p.POP_Total))+row('Age (median)',number(p.AGE_MED))+
                     row('Mortgage Cost',money(p.MORT_COST_))+row('Mortgage Tax',money(p.MORT_TAX_M))+
                     row('Rent',money(p.RENT_MED))+row('Year Built',p.YR_BUILT_M==null||p.YR_BUILT_M===''?'No data':String(Math.round(Number(p.YR_BUILT_M))))));}
             });
         }else{
-            const obsColors={Yes:'#1FFF96',No:'#FF1F88',Maybe:'#FF961F',Remember:'#1F88FF'};
+            const obsColors={Yes:'#1E723B',No:'#FC501E',Maybe:'#D99F37',Remember:'#343ABB'};
             layer=L.geoJSON(data,{
                 pane:'explorer-'+spec.id,
                 pointToLayer:(f,ll)=>L.circleMarker(ll,{pane:'explorer-'+spec.id,radius:7,color:'#fff',weight:1.5,fillOpacity:.95,fillColor:spec.id==='observations'?(obsColors[f.properties.Observation_Type]||spec.color):spec.color,className:'label-obstacle'}),
@@ -200,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 /* Neighborhood labels and geolocation controls, previously in the root script. */
-const LABEL_FONT = '700 12px Inter, Arial, sans-serif';
+const LABEL_FONT = '500 12px "Host Grotesk", sans-serif';
 let labelMeasureCtx = null;
 
 function measureTextWidth(text, font=LABEL_FONT) {
@@ -375,7 +324,7 @@ function enableUserLocation(map) {
             accuracyCircle = L.circle(lastLatLng, {
                 radius: accuracy,
                 weight: 0,
-                fillColor: '#1F88FF',
+                fillColor: '#343ABB',
                 fillOpacity: 0.12,
                 interactive: false
             }).addTo(map);
@@ -384,7 +333,7 @@ function enableUserLocation(map) {
                 radius: 7,
                 weight: 2,
                 color: '#fff',
-                fillColor: '#1F88FF',
+                fillColor: '#343ABB',
                 fillOpacity: 1,
                 interactive: false
             }).addTo(map);
@@ -450,7 +399,7 @@ function addLocateControl(map, locationApi) {
             const link = L.DomUtil.create('a', '', container);
             link.href = '#';
             link.title = 'Show my location';
-            link.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" class="locate-dot"/></svg>';
+            link.innerHTML = '&#10070;';
 
             L.DomEvent.disableClickPropagation(container);
             L.DomEvent.on(link, 'click', (e) => {
