@@ -1,468 +1,234 @@
-/* Portland Explorer: map, labels, location control, and layer behavior. */
+/* Portland Explorer: mobile-first livability map. */
 (() => {
 'use strict';
+const $=(s,r=document)=>r.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>v!=null&&v!==''&&Number.isFinite(+v)?+v:null;
+const usd=v=>num(v)==null?'–':'$'+Math.round(v).toLocaleString();
+const pct=v=>num(v)==null?'–':Math.round(v)+'%';
+const short=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v/1e3)+'K';
+const title=v=>String(v||'').toLowerCase().replace(/\b\p{L}/gu,c=>c.toUpperCase());
+const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+const mobile=matchMedia('(max-width: 799px)');
 
-function initExplorerMap() {
-    const map=L.map('map',{zoomControl:false,minZoom:8,maxZoom:19});
-    L.control.zoom({position:'bottomright'}).addTo(map);
-    const locationApi=enableUserLocation(map);
-    addLocateControl(map,locationApi);
-    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{
-        attribution:'Tiles &copy; Esri — Esri, DeLorme, NAVTEQ',
-        maxNativeZoom:16,
-        maxZoom:19
-    }).addTo(map);
-    map.setView([45.52,-122.67],11);
-    return map;
+const map=L.map('map',{zoomControl:false,minZoom:8,maxZoom:19,zoomSnap:.5});
+L.control.zoom({position:'bottomright'}).addTo(map);
+const esriTiles=p=>`https://services.arcgisonline.com/ArcGIS/rest/services/${p}/MapServer/tile/{z}/{y}/{x}`;
+const vec=style=>{try{if(!L.maplibreGL||!window.maplibregl)throw Error('MapLibre not loaded');return L.maplibreGL({style:`https://tiles.openfreemap.org/styles/${style}`,attribution:'<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'});}catch(e){console.error('Vector basemap failed, using Esri tiles:',e);return L.tileLayer(esriTiles('World_Street_Map'),{maxNativeZoom:16,maxZoom:19,attribution:'Tiles &copy; Esri'});}};
+const BASES={
+ soft:()=>vec('liberty'),light:()=>vec('positron'),dark:()=>vec('dark'),
+ sat:()=>L.layerGroup([L.tileLayer(esriTiles('World_Imagery'),{maxNativeZoom:19,maxZoom:19,attribution:'Imagery &copy; Esri'}),L.tileLayer(esriTiles('Reference/World_Boundaries_and_Places'),{maxNativeZoom:17,maxZoom:19})])
+};
+let base,baseId;const baseBtns={};
+const setBase=id=>{
+ if(base)map.removeLayer(base);
+ baseId=id;base=BASES[id]();base.addTo(map);
+ map.getContainer().classList.toggle('soft',id==='soft');
+ try{localStorage.setItem('pdxBase',id);}catch(e){}
+ Object.entries(baseBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',String(k===id)));
+};
+map.setView([45.52,-122.67],11);
+
+const specs=[
+ {id:'neighborhoods',label:'Neighborhoods',color:'#0f7b5f',g:'a'},
+ {id:'cities',label:'Cities',color:'#5b5bd6',g:'a'},
+ {id:'census',label:'Census tracts',color:'#e8833a',g:'a'},
+ {id:'grocery',label:'Groceries',color:'#2b7de9',g:'p'},
+ {id:'restaurants',label:'Food',color:'#e5484d',g:'p'},
+ {id:'observations',label:'Observations',color:'#8e4ec6',g:'p'}];
+const groups={},chips={},all=[];let selected=null,census=null;
+
+/* DOM */
+document.body.insertAdjacentHTML('beforeend',`<div class="top"><div class="topbar"><div class="search"><span class="home"></span><input type="search" placeholder="Search Portland" aria-label="Search" autocomplete="off"></div><button class="lbtn" aria-label="Map layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button></div><div class="results"></div><div class="menu" hidden></div></div><button class="fab" aria-label="Show my location"><svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/></svg></button><section class="sheet" aria-hidden="true"><div class="grab"></div><button class="x" aria-label="Close">&times;</button><div class="body"></div></section>`);
+const home=$('.map-back-btn');if(home)$('.search .home').replaceWith(home);
+const sheet=$('.sheet'),body=$('.body',sheet),results=$('.results'),input=$('.search input');
+const openSheet=html=>{body.innerHTML=html;sheet.scrollTop=0;sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');document.body.classList.add('sheet-open');};
+const closeSheet=()=>{sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');document.body.classList.remove('sheet-open');if(selected){selected.reset();selected=null;}};
+$('.x',sheet).onclick=closeSheet;
+new ResizeObserver(()=>document.body.style.setProperty('--sh',sheet.offsetHeight+'px')).observe(sheet);
+addEventListener('keydown',e=>e.key==='Escape'&&closeSheet());
+L.DomEvent.disableClickPropagation(sheet);L.DomEvent.disableScrollPropagation(sheet);
+L.DomEvent.disableClickPropagation($('.top'));
+
+/* Layer menu */
+const menu=$('.menu'),lbtn=$('.lbtn');
+const closeMenu=()=>{menu.hidden=true;lbtn.setAttribute('aria-expanded','false');};
+lbtn.onclick=()=>{const o=menu.hidden;menu.hidden=!o;lbtn.setAttribute('aria-expanded',String(o));results.innerHTML='';};
+map.on('click dragstart zoomstart',closeMenu);
+specs.forEach((s,i)=>{
+ if(i===0||i===3)menu.insertAdjacentHTML('beforeend',`<h3>${i?'Places':'Areas'}</h3>`);
+ const b=document.createElement('button');b.className='lrow';b.style.setProperty('--c',s.color);b.disabled=true;b.setAttribute('aria-pressed','false');b.innerHTML=`<i></i>${s.label}<em></em>`;
+ b.onclick=()=>{toggle(s.id);closeMenu();};chips[s.id]=b;menu.appendChild(b);map.createPane('p-'+s.id).style.zIndex=410+i*10;
+});
+map.createPane('p-hl').style.zIndex=440;
+menu.insertAdjacentHTML('beforeend','<h3>Basemap</h3>');
+[['soft','Standard'],['light','Light'],['dark','Dark'],['sat','Satellite']].forEach(([id,l])=>{
+ const b=document.createElement('button');b.className='lrow';b.style.setProperty('--c','#8a9a94');b.setAttribute('aria-pressed','false');b.innerHTML=`<i></i>${l}<em></em>`;
+ b.onclick=()=>{setBase(id);closeMenu();};baseBtns[id]=b;menu.appendChild(b);
+});
+let savedBase;try{savedBase=localStorage.getItem('pdxBase');}catch(e){}
+setBase(BASES[savedBase]?savedBase:dark?'dark':'soft');
+function toggle(id,on){
+ const s=specs.find(x=>x.id===id),g=groups[id];if(!g)return;
+ on=on??!map.hasLayer(g);
+ if(on)specs.filter(x=>x.g===s.g&&x.id!==id).forEach(x=>toggle(x.id,false));
+ on?g.addTo(map):map.removeLayer(g);
+ chips[id].setAttribute('aria-pressed',String(on));
+ if(on&&g.labels)g.labels();
+ if(!on&&selected&&selected.id===id)closeSheet();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const map = initExplorerMap();
-    let closeLayerPanel=()=>{};
-    const mobilePopup=window.matchMedia('(max-width: 600px)');
-    const bottomSheet=document.createElement('section');
-    bottomSheet.className='map-bottom-sheet';
-    bottomSheet.setAttribute('aria-hidden','true');
-    bottomSheet.innerHTML='<div class="map-bottom-sheet-handle" aria-hidden="true"></div><button type="button" class="map-bottom-sheet-close" aria-label="Close details">&times;</button><div class="map-bottom-sheet-content"></div>';
-    document.body.appendChild(bottomSheet);
-    const closeBottomSheet=()=>{
-        bottomSheet.classList.remove('is-open');
-        bottomSheet.setAttribute('aria-hidden','true');
-    };
-    bottomSheet.querySelector('.map-bottom-sheet-close').addEventListener('click',closeBottomSheet);
-    document.addEventListener('pointerdown',event=>{
-        if(bottomSheet.classList.contains('is-open')&&!bottomSheet.contains(event.target))closeBottomSheet();
-    });
-    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeBottomSheet();});
-    L.DomEvent.disableClickPropagation(bottomSheet);
-    L.DomEvent.disableScrollPropagation(bottomSheet);
-    map.on('popupopen',event=>{
-        if(!mobilePopup.matches)return;
-        closeLayerPanel();
-        const content=event.popup.getContent();
-        map.closePopup(event.popup);
-        bottomSheet.querySelector('.map-bottom-sheet-content').innerHTML=typeof content==='string'?content:'';
-        bottomSheet.scrollTop=0;
-        bottomSheet.setAttribute('aria-hidden','false');
-        requestAnimationFrame(()=>bottomSheet.classList.add('is-open'));
-    });
-    mobilePopup.addEventListener?.('change',event=>{if(!event.matches)closeBottomSheet();});
-    const specs = [
-        {id:'neighborhoods', label:'Neighborhoods', file:'neighborhoods.geojson', pane:410, color:'#1FFF96'},
-        {id:'cities', label:'Cities', file:'cities.geojson', pane:420, color:'#1F88FF'},
-        {id:'census', label:'Census tracts', file:'census.geojson', pane:430, color:'#961FFF'},
-        {id:'grocery', label:'Grocery stores', file:'grocery.geojson', pane:450, color:'#1FFF96'},
-        {id:'restaurants', label:'Restaurants', file:'restaurants.geojson', pane:460, color:'#FF1F88'},
-        {id:'observations', label:'Sept 2026 observations', file:'observations.geojson', pane:470, color:'#FF961F'}
-    ];
-    const groups = {};
-    const inputs = {};
-    const exclusiveAreas = ['neighborhoods', 'cities', 'census'];
-    const exclusivePlaces = ['grocery', 'restaurants', 'observations'];
-    const safe = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const titleCase = value => String(value ?? '').toLocaleLowerCase().replace(/\b\p{L}/gu,letter=>letter.toLocaleUpperCase());
-    const money = value => Number.isFinite(Number(value)) && value !== null && value !== '' ? '$'+Math.round(Number(value)).toLocaleString() : 'No data';
-    const number = value => value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-US',{maximumFractionDigits:1}) : 'No data';
-    const row = (name,value) => value == null || value === '' ? '' : `<div class="popup-row"><span class="popup-label">${safe(name)}</span><span class="popup-value">${safe(value)}</span></div>`;
-    const card = (title,contents) => `<div class="popup-card"><div class="popup-title">${safe(title)}</div>${contents}</div>`;
-    const sparkline = series => {
-        const values=[];
-        for(let year=2020;year<=2026;year++){
-            const value=series?.[`${year}-08-31`];
-            if(Number.isFinite(Number(value)))values.push({year,value:Number(value)});
-        }
-        if(values.length<2)return '';
-        const min=Math.min(...values.map(d=>d.value));
-        const max=Math.max(...values.map(d=>d.value));
-        const span=max-min||1;
-        const points=values.map((d,i)=>({
-            ...d,
-            x:12+i*(216/(values.length-1)),
-            y:66-((d.value-min)/span)*48
-        }));
-        const linePoints=points.map(d=>`${d.x},${d.y}`).join(' ');
-        return `<div class="value-chart" aria-label="Home value trend from ${values[0].year} to ${values.at(-1).year}"><svg viewBox="0 0 240 78" role="img"><line x1="12" y1="66" x2="228" y2="66"></line><polyline points="${linePoints}"></polyline>${points.map(d=>`<circle cx="${d.x}" cy="${d.y}" r="3.5"></circle>`).join('')}</svg><div class="value-chart-years"><span>${values[0].year}</span><span>${values.at(-1).year}</span></div></div>`;
-    };
-    const neighborhoodCard=(p,now,pct,fiveYearChange,series)=>`<div class="neighborhood-card"><div class="popup-title">${safe(p.Name)}</div><div class="neighborhood-city"><span>City</span><strong>${safe(titleCase(p.City||'No data'))}</strong></div><div class="home-value"><span>Typical home value · Aug 2026</span><strong>${money(now)}</strong></div><div class="change-grid"><div><span>Since Aug 2025</span><strong>${safe(pct||'No data')}</strong></div><div><span>Since Aug 2021</span><strong>${safe(fiveYearChange||'No data')}</strong></div></div>${sparkline(series)}</div>`;
-    const fetchJSON = async filename => {const res=await fetch('data/'+filename);if(!res.ok)throw Error(`${filename}: HTTP ${res.status}`);return res.json();};
-    const note = document.createElement('div'); note.className='explorer-error'; note.setAttribute('role','status');
-    for(const spec of specs){const pane=map.createPane('explorer-'+spec.id);pane.style.zIndex=String(spec.pane);}
-    const LayerControl=L.Control.extend({options:{position:'topright'},onAdd(){
-        const el=L.DomUtil.create('div','explorer-layers');
-        const panelId='explorer-layer-list';
-        el.innerHTML=`<button type="button" class="explorer-collapse" aria-label="Show or hide map layers" aria-expanded="true" aria-controls="${panelId}">`+
-            '<span class="explorer-launch-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></span><span class="explorer-panel-title">Map layers</span>'+
-            '<span class="explorer-control-action" aria-hidden="true"></span></button>'+
-            `<div class="explorer-panel" id="${panelId}">`+
-            specs.map(s=>`<label class="explorer-row${s.id==='grocery'?' explorer-divider':''}"><input type="checkbox" data-layer="${s.id}" aria-label="Show ${safe(s.label)}" disabled><span class="explorer-layer-name">${safe(s.label)}</span></label>`).join('')+
-            '</div>';
-        const panel=el.querySelector('.explorer-panel');
-        const collapse=el.querySelector('.explorer-collapse');
-        panel.appendChild(note);
-        const setOpen=open=>{
-            panel.hidden=!open;
-            el.classList.toggle('is-collapsed',!open);
-            collapse.setAttribute('aria-expanded',String(open));
-        };
-        closeLayerPanel=()=>setOpen(false);
-        setOpen(false);
-        collapse.addEventListener('click',()=>setOpen(panel.hidden));
-        el.querySelectorAll('input').forEach(input=>{inputs[input.dataset.layer]=input;input.addEventListener('change',()=>{
-            const layer=groups[input.dataset.layer];if(!layer)return;
-            if(input.checked){
-                const exclusiveGroup=exclusiveAreas.includes(input.dataset.layer)?exclusiveAreas:exclusivePlaces;
-                exclusiveGroup.forEach(id=>{
-                    if(id!==input.dataset.layer && inputs[id]?.checked){
-                        inputs[id].checked=false;
-                        if(groups[id])map.removeLayer(groups[id]);
-                    }
-                });
-            }
-            if(input.checked)layer.addTo(map);else map.removeLayer(layer);
-            if(input.checked && layer.updateLabels)layer.updateLabels();
-        });});
-        L.DomEvent.disableClickPropagation(el);L.DomEvent.disableScrollPropagation(el);
-        return el;
-    }});
-    new LayerControl().addTo(map);
-    map.on('click',closeLayerPanel);
-    function error(spec,err){console.error('Map layer error',spec.id,err);note.textContent+=`${spec.label} could not load. `;inputs[spec.id].closest('label').title=String(err);}
-    function polygonLayer(data,spec,options){return L.geoJSON(data,{...options,pane:'explorer-'+spec.id});}
-    function setup(spec,data,history={}){
-        let layer;
-        if(spec.id==='neighborhoods'){
-            layer=polygonLayer(data,spec,{
-                style:()=>({color:'#211E1E',weight:1,opacity:.8,fillColor:spec.color,fillOpacity:.24}),
-                onEachFeature:(f,l)=>{
-                    const p=f.properties;
-                    const now=p.ZHVI_2026_08,prior=p.ZHVI_2025_08;
-                    const fiveYearsAgo=history[String(p.RegionID)]?.['2021-08-31'];
-                    const pct=now!=null&&prior?`${((now/prior-1)*100).toFixed(1)}%`:null;
-                    const fiveYearChange=now!=null&&fiveYearsAgo?`${((now/fiveYearsAgo-1)*100).toFixed(1)}%`:null;
-                    l.bindPopup(neighborhoodCard(p,now,pct,fiveYearChange,history[String(p.RegionID)]),{className:'app-popup neighborhood-popup',maxWidth:320});
-                }
-            });
-            // Permanent labels belong to the layer; removing it hides the labels too.
-            layer.updateLabels=setupAutoLabels(map,layer,{labelBy:'Name'});
-            map.on('moveend',()=>{if(map.hasLayer(layer))layer.updateLabels();});
-        }else if(spec.id==='cities'){
-            layer=polygonLayer(data,spec,{
-                style:()=>({color:spec.color,weight:1.4,fillColor:spec.color,fillOpacity:.08}),
-                onEachFeature:(f,l)=>l.bindPopup(card(f.properties.NAME,''))
-            });
-            layer.updateLabels=setupAutoLabels(map,layer,{
-                labelBy:'NAME',
-                labelClass:'explorer-city-label',
-                labelFont:'700 12px Inter, Arial, sans-serif'
-            });
-            map.on('moveend',()=>{if(map.hasLayer(layer))layer.updateLabels();});
-        }else if(spec.id==='census'){
-            layer=polygonLayer(data,spec,{
-                style:()=>({color:spec.color,weight:1,opacity:.9,fillColor:spec.color,fillOpacity:.12}),
-                onEachFeature:(f,l)=>{const p=f.properties;l.bindPopup(card('Census tract '+String(p.GEOID||'').slice(-6),
-                    row('Population',number(p.POP_Total))+row('Age (median)',number(p.AGE_MED))+
-                    row('Mortgage Cost',money(p.MORT_COST_))+row('Mortgage Tax',money(p.MORT_TAX_M))+
-                    row('Rent',money(p.RENT_MED))+row('Year Built',p.YR_BUILT_M==null||p.YR_BUILT_M===''?'No data':String(Math.round(Number(p.YR_BUILT_M))))));}
-            });
-        }else{
-            const obsColors={Yes:'#1FFF96',No:'#FF1F88',Maybe:'#FF961F',Remember:'#1F88FF'};
-            layer=L.geoJSON(data,{
-                pane:'explorer-'+spec.id,
-                pointToLayer:(f,ll)=>L.circleMarker(ll,{pane:'explorer-'+spec.id,radius:7,color:'#fff',weight:1.5,fillOpacity:.95,fillColor:spec.id==='observations'?(obsColors[f.properties.Observation_Type]||spec.color):spec.color,className:'label-obstacle'}),
-                onEachFeature:(f,l)=>{
-                    const p=f.properties;
-                    if(spec.id==='grocery')l.bindPopup(card(p.Name,row('Category',p.Category)+row('Address',[p.Address,p.City].filter(Boolean).join(', '))+row('Notes',p.Notes)));
-                    if(spec.id==='restaurants')l.bindPopup(card(p.USER_NAME,row('Category',p.USER_CATEGORY)+row('Address',[p.USER_ADDRESS,p.USER_CITY].filter(Boolean).join(', '))));
-                    if(spec.id==='observations'){
-                        const images=(p.Photos||[]).map(path=>{
-                            const src='data/'+path.split('/').map(encodeURIComponent).join('/');
-                            return `<a href="${src}" target="_blank" rel="noopener noreferrer"><img src="${src}" alt="Observation photo" loading="lazy"></a>`;
-                        }).join('');
-                        l.bindPopup(card('Observation · '+p.Observation_Type,row('Type',p.Observation_Type)+(p.Notes?`<div class="explorer-notes">${safe(p.Notes)}</div>`:'')+(images?`<div class="explorer-photo-grid">${images}</div>`:'')),{className:'explorer-popup',maxWidth:290});
-                    }
-                }
-            });
-        }
-        groups[spec.id]=layer;
-        inputs[spec.id].disabled=false;
-    }
-    fetchJSON('metro.geojson').then(data=>{
-        const metro=L.geoJSON(data,{interactive:false,style:{color:'#211E1E',weight:2,dashArray:'5,4',fill:false}}).addTo(map);
-        if(metro.getBounds().isValid())map.fitBounds(metro.getBounds(),{padding:[30,30]});
-    }).catch(err=>{console.error(err);note.textContent+='Metro boundary could not load. ';});
-    specs.forEach(spec=>{
-        const data=spec.id==='neighborhoods'
-            ? Promise.all([fetchJSON(spec.file),fetchJSON('zhvi_history.json').catch(err=>{console.error('Home value history could not load',err);return {};})]).then(([geojson,history])=>setup(spec,geojson,history))
-            : fetchJSON(spec.file).then(geojson=>setup(spec,geojson));
-        data.catch(err=>error(spec,err));
-    });
+/* Detail cards */
+const stat=(l,v)=>`<div class="stat"><span>${l}</span><b>${v}</b></div>`;
+const dirs=ll=>`<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ll.lat},${ll.lng}">Directions</a>`;
+const change=(a,b)=>{if(!a||!b)return '<b>–</b>';const c=(a/b-1)*100;return `<b class="${c>=0?'up':'down'}">${c>=0?'+':''}${c.toFixed(1)}%</b>`;};
+function chart(series){
+ const pts=Object.entries(series||{}).filter(([k,v])=>k>='2020-01'&&num(v)!=null).sort(([a],[b])=>a<b?-1:1);
+ if(pts.length<2)return '';
+ const W=320,H=120,vs=pts.map(p=>p[1]),lo=Math.min(...vs),hi=Math.max(...vs),sp=hi-lo||1;
+ const xy=pts.map(([,v],i)=>[8+i*(W-16)/(pts.length-1),H-10-(v-lo)/sp*(H-30)]);
+ const line=xy.map(p=>p.join(',')).join(' ');
+ const id='c'+Math.random().toString(36).slice(2,7);
+ setTimeout(()=>{
+  const el=document.getElementById(id);if(!el)return;
+  const dot=$('.d',el),rd=$('.rd',el),g=$('.g',el),svg=$('svg',el);
+  const show=e=>{const r=svg.getBoundingClientRect();const i=Math.max(0,Math.min(pts.length-1,Math.round((e.clientX-r.left)/r.width*(pts.length-1))));
+   const [x,y]=xy[i];dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.style.display='';g.setAttribute('x1',x);g.setAttribute('x2',x);
+   const d=new Date(pts[i][0]+'T12:00');rd.innerHTML=`<span>${d.toLocaleDateString('en-US',{month:'short',year:'numeric'})}</span><span>${usd(pts[i][1])}</span>`;};
+  el.addEventListener('pointermove',show);el.addEventListener('pointerdown',show);
+ });
+ const y0=pts[0][0].slice(0,4),y1=pts.at(-1)[0].slice(0,4);
+ return `<div class="chart" id="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Home value ${y0} to ${y1}"><line class="g" x1="8" x2="8" y1="0" y2="${H}"/><polygon class="a" points="8,${H} ${line} ${W-8},${H}"/><polyline class="l" points="${line}"/><circle class="d" r="5" cx="${xy.at(-1)[0]}" cy="${xy.at(-1)[1]}"/></svg><div class="rd"><span>${y0}</span><span>Touch chart to explore · ${y1}</span></div></div>`;
+}
+function inRing(p,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j];if((a.lat>p.lat)!==(b.lat>p.lat)&&p.lng<(b.lng-a.lng)*(p.lat-a.lat)/(b.lat-a.lat)+a.lng)c=!c;}return c;}
+function tractAt(ll){let hit=null;census?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
+const HK=['HOMEVAL_ME','RENT_MED','MORT_COST_','MORT_TAX_M','YR_BUILT_M','INC_HH_MED'];
+function hoodStats(layer,ll){
+ const b=layer.getBounds(),g=layer.getLatLngs(),polys=Array.isArray(g[0][0])?g:[g],N=16,sum={},n={};let hit=0;
+ const add=t=>{for(const k of HK){const v=num(t[k]);if(v>0){sum[k]=(sum[k]||0)+v;n[k]=(n[k]||0)+1;}}};
+ for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+  const pt=L.latLng(b.getSouth()+(i+.5)/N*(b.getNorth()-b.getSouth()),b.getWest()+(j+.5)/N*(b.getEast()-b.getWest()));
+  if(!polys.some(q=>inRing(pt,q[0])))continue;
+  const t=tractAt(pt);if(t){add(t);hit++;}
+ }
+ if(!hit){const t=tractAt(ll);if(!t)return null;add(t);}
+ return Object.fromEntries(HK.filter(k=>n[k]).map(k=>[k,sum[k]/n[k]]));
+}
+function hoodCard(p,hist,ll,layer){
+ const now=p.ZHVI_2026_08,t=census?hoodStats(layer,ll):null,h=hist?.[p.RegionID];
+ return `<h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div><div class="big">${usd(now)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
+ <div class="pills"><div class="pill">${change(now,p.ZHVI_2025_08)}<span>Past year</span></div><div class="pill">${change(now,h?.['2021-08-31'])}<span>Past 5 years</span></div></div>${chart(h)}
+ ${t?`<details open><summary>Census estimates</summary><div class="grid">${stat('Median home value',usd(t.HOMEVAL_ME))}${stat('Median rent',usd(t.RENT_MED))}${stat('Monthly mortgage',usd(t.MORT_COST_))}${stat('Yearly property tax',usd(t.MORT_TAX_M))}${stat('Typical year built',t.YR_BUILT_M?Math.round(t.YR_BUILT_M):'–')}${stat('Household income',usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details>`:''}`;
+}
+const meter=(l,v,o)=>`<div class="stat wide"><div class="key" style="font-size:15px;color:var(--ink)"><span>${l}</span><b>${pct(v)}</b></div><div class="meter"><div class="bar"><i style="width:${v}%"></i></div>${o?`<u style="left:${o}%"></u>`:''}</div>${o?`<div class="key"><span>Oregon average ${pct(o)}</span></div>`:''}</div>`;
+function schools(p){
+ const rows=[['Reading','English_La','Oregon_ELA'],['Math','Mathematic','Oregon_Mat'],['Science','Science','Oregon_Sci'],['On track to graduate','On_Track_t','Oregon_On_'],['College-going','College_Go','Oregon_Col']].filter(([,k])=>+p[k]>0);
+ return `<details><summary>Schools</summary>${rows.length?`<div class="grid">${rows.map(([l,k,o])=>meter(l,+p[k],+p[o]||0)).join('')}</div><div class="sub">Test scores show the share of students meeting standards.</div>`:'<div class="sub" style="padding-bottom:8px">No school data for this tract.</div>'}</details>`;
+}
+function tractCard(p){
+ const gk=Object.keys(p).find(k=>/^[A-F][+-]?$/.test(p[k]||'')&&!/FUNC/i.test(k)),own=num(p.OWN_OCC_PC)??0,rent=num(p.RENT_OCC_P)??0;
+ const zones=[['Commercial','ZONE_Comme'],['Residential','ZONE_Resid'],['Res. rural','ZONE_Res_R'],['Industrial','ZONE_Indus'],['Parks','ZONE_Park_'],['Farm','ZONE_Farmi'],['Forest','ZONE_Fores']].filter(([,k])=>+p[k]>=1).sort((a,b)=>p[b[1]]-p[a[1]]);
+ return `<h2>Census tract ${esc(String(p.GEOID||'').slice(-6))}</h2><div class="sub">${num(p.POP_Total)?.toLocaleString()||'–'} people · median age ${num(p.AGE_MED)??'–'}</div>
+ <div class="big">${usd(p.INC_HH_MED)}</div><div class="sub">Median household income</div>
+ <div class="grid">${stat('Median home value',usd(p.HOMEVAL_ME))}${stat('Median rent',usd(p.RENT_MED))}
+ ${gk?`<div class="stat wide"><span>Niche grade</span><b>${esc(p[gk])}</b></div>`:''}<div class="stat wide"><span>Own vs. rent</span><div class="bar"><i style="width:${own}%"></i><i style="width:${rent}%"></i></div><div class="key"><span>Own ${pct(own)}</span><span>Rent ${pct(rent)}</span></div></div>
+ <div class="stat wide"><span>Bachelor's degree or higher</span><div class="bar"><i style="width:${num(p.EDU_BA_PCT)??0}%"></i></div><div class="key"><span>${pct(p.EDU_BA_PCT)}</span><span>Poverty ${pct(p.INC_POV_PC)}</span></div></div></div>
+ <details><summary>Housing costs</summary><div class="grid">${stat('Monthly mortgage',usd(p.MORT_COST_))}${stat('Yearly property tax',usd(p.MORT_TAX_M))}${stat('Typical year built',num(p.YR_BUILT_M)?Math.round(p.YR_BUILT_M):'–')}${stat('Under 18 · 65+',pct(p.AGE_U18_PC)+' · '+pct(p.AGE_65P_PC))}</div></details>
+ ${schools(p)}
+ ${zones.length?`<details><summary>Land use</summary><div class="grid">${zones.map(([n,k])=>stat(n,pct(p[k]))).join('')}</div></details>`:''}`;
+}
+const cityCard=p=>{const t=String(p.NAMELSAD||'').replace(p.NAME,'').trim();return `<h2>${esc(p.NAME)}</h2><div class="sub">${t==='CDP'?'Census-designated place':esc(title(t)||'City')}</div>`;};
+const placeCard=(t,sub,ll,extra='')=>`<h2>${esc(t)}</h2><div class="sub">${esc(sub)}</div>${extra}${dirs(ll)}`;
+const obsColors={Yes:'#0f7b5f',No:'#d64545',Remember:'#e0a100'};
+
+/* Layers */
+let hl=null;
+function pick(layer,id,html,ll){
+ if(selected)selected.reset();
+ const poly=['neighborhoods','cities','census'].includes(id);
+ if(poly){layer.setStyle({weight:3.5,fillOpacity:.28,opacity:1});layer.bringToFront();selected={id,reset:()=>layer.setStyle(styleOf(id))};}
+ else{const c=layer.hc||'#0f7b5f';hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color:c,weight:3,fillColor:c,fillOpacity:.2,interactive:false}).addTo(map);selected={id,reset(){if(hl)map.removeLayer(hl);hl=null;}};}
+ openSheet(html);
+ if(poly){if(mobile.matches)map.panTo(ll,{animate:true});return;}
+ const z=Math.max(map.getZoom(),15),shift=mobile.matches?[0,sheet.offsetHeight/2]:[-198,0];
+ map.flyTo(map.unproject(map.project(ll,z).add(shift),z),z,{duration:.6});
+}
+const styleOf=id=>{const c=specs.find(s=>s.id===id).color;return {color:c,weight:id==='cities'?2.4:1.9,opacity:.95,fillColor:c,fillOpacity:.12};};
+function build(s,data,hist){
+ const pane='p-'+s.id,items=[];let g;
+ if(s.g==='a'){
+  g=L.geoJSON(data,{pane,style:()=>styleOf(s.id),onEachFeature:(f,l)=>{
+   const p=f.properties;
+   l.on('click',e=>{L.DomEvent.stopPropagation(e);pick(l,s.id,s.id==='neighborhoods'?hoodCard(p,hist,e.latlng,l):s.id==='census'?tractCard(p):cityCard(p),e.latlng);});
+   if(s.id!=='census'){const n=p.Name||p.NAME;l.bindTooltip(n,{permanent:true,direction:'center',className:'nl',interactive:false});items.push({l,n});}
+  }});
+  if(items.length){g.items=items;g.labels=()=>labels(g);map.on('moveend',()=>map.hasLayer(g)&&labels(g));}
+  if(s.id==='census')census=g;
+ }else{
+  const gj=L.geoJSON(data,{pane,pointToLayer:(f,ll)=>{const c=s.id==='observations'?obsColors[f.properties.Observation_Type]||s.color:s.color;const m=L.marker(ll,{icon:L.divIcon({className:'',html:`<i class="dot" style="background:${c}"></i>`,iconSize:[22,22]})});m.hc=c;return m;},
+   onEachFeature:(f,l)=>{const p=f.properties,ll=l.getLatLng();l.on('click',e=>{L.DomEvent.stopPropagation(e);
+    let h;
+    if(s.id==='grocery')h=placeCard(p.Name,[p.Address,p.City].filter(Boolean).join(', '),ll,p.Notes?`<div class="note">${esc(p.Notes)}</div>`:'');
+    else if(s.id==='restaurants')h=placeCard(p.USER_NAME,[p.USER_CATEGORY,p.USER_ADDRESS].filter(Boolean).join(' · '),ll);
+    else{const c=obsColors[p.Observation_Type]||s.color;h=placeCard(p.Observation_Type==='Remember'?'Remember this':p.Observation_Type==='Yes'?'Liked this spot':'Not for us',' ',ll,`<span class="badge" style="--c:${c}">${esc(p.Observation_Type)}</span>${p.Notes?`<div class="note">${esc(p.Notes)}</div>`:''}${(p.Photos||[]).length?`<div class="photos">${p.Photos.map(x=>`<img loading="lazy" alt="Photo" src="data/${x.split('/').map(encodeURIComponent).join('/')}">`).join('')}</div>`:''}`);}
+    pick(l,s.id,h,ll);});}});
+  g=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,spiderfyOnMaxZoom:true,iconCreateFunction:c=>{const n=c.getChildCount(),z=n<10?38:n<50?46:54;return L.divIcon({className:'',html:`<div class="cl" style="background:${s.color}">${n}</div>`,iconSize:[z,z]});}});
+  g.addLayer(gj);
+ }
+ groups[s.id]=g;chips[s.id].disabled=false;
+}
+/* Labels: show only names that fit, without overlapping each other */
+const ctx=document.createElement('canvas').getContext('2d');
+function labels(g){
+ ctx.font='700 12px Figtree,sans-serif';const placed=[];
+ g.items.map(({l,n})=>{const b=l.getBounds(),a=map.latLngToContainerPoint(b.getNorthWest()),z=map.latLngToContainerPoint(b.getSouthEast());return {l,n,w:Math.abs(z.x-a.x),h:Math.abs(z.y-a.y),c:map.latLngToContainerPoint(b.getCenter())};})
+  .sort((a,b)=>b.w*b.h-a.w*a.h).forEach(o=>{
+   const tw=ctx.measureText(o.n).width,r={l:o.c.x-tw/2-3,r:o.c.x+tw/2+3,t:o.c.y-9,b:o.c.y+9};
+   const ok=o.w>tw+14&&o.h>26&&!placed.some(q=>r.l<q.r&&r.r>q.l&&r.t<q.b&&r.b>q.t);
+   if(ok){placed.push(r);o.l.openTooltip(map.containerPointToLatLng(o.c));}else o.l.closeTooltip();});
+}
+
+/* Data */
+const load=async f=>{let err;for(const b of ['data/','']){try{const r=await fetch(b+f);if(r.ok)return await r.json();err=`${b+f} returned HTTP ${r.status}`;}catch(e){err=`${b+f}: ${e.message}`;}}throw Error(err);};
+const toast=(t,ms=12000)=>{const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),ms);};
+const fails=[];let ft;
+const fail=(n,e)=>{console.error(n,e);fails.push(n);clearTimeout(ft);ft=setTimeout(()=>toast(location.protocol==='file:'?'Open this through a web server (http://), not by double-clicking the file. Browsers block data loading from local files.':`Couldn't load ${fails.join(', ')}. First error: ${e.message}`),400);};
+const searchable=[];
+load('metro.geojson').then(d=>{const m=L.geoJSON(d,{interactive:false,style:{color:dark?'#eef3f1':'#13201b',weight:2,dashArray:'6 6',fill:false,opacity:.6}}).addTo(map);map.fitBounds(m.getBounds(),{padding:[30,30]});}).catch(e=>fail('metro boundary',e));
+specs.forEach(s=>{
+ const req=s.id==='neighborhoods'?Promise.all([load('neighborhoods.geojson'),load('zhvi_history.json').catch(()=>({}))]):load(s.id+'.geojson').then(d=>[d]);
+ (s.id==='neighborhoods'?req:req).then(([d,h])=>{
+  build(s,d,h);
+  d.features.forEach(f=>{const p=f.properties,n=p.Name||p.NAME||p.USER_NAME;if(n&&s.id!=='census'&&s.id!=='observations')searchable.push({n,sub:s.id==='neighborhoods'?title(p.City):s.label,s,f});});
+  if(s.id==='neighborhoods')toggle('neighborhoods',true);
+ }).catch(e=>fail(s.label,e));
 });
 
+/* Search */
+input.addEventListener('input',()=>{
+ const q=input.value.trim().toLowerCase();
+ results.innerHTML=q.length<2?'':searchable.filter(x=>x.n.toLowerCase().includes(q)).slice(0,7).map((x,i)=>`<button data-i="${searchable.indexOf(x)}">${esc(x.n)}<small>${esc(x.sub)}</small></button>`).join('');
+});
+results.addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b)return;const x=searchable[+b.dataset.i];
+ results.innerHTML='';input.value=x.n;input.blur();
+ if(!map.hasLayer(groups[x.s.id]))toggle(x.s.id,true);
+ let target;groups[x.s.id].eachLayer(l=>{if(l.feature===x.f)target=l;});
+ if(!target)return;
+ if(target.getBounds){map.fitBounds(target.getBounds(),{padding:[40,40]});target.fire('click',{latlng:target.getBounds().getCenter()});}
+ else{map.setView(target.getLatLng(),16);target.fire('click');}
+});
+map.on('click',()=>{closeSheet();results.innerHTML='';});
+map.on('dragstart',closeSheet);
 
-/* Neighborhood labels and geolocation controls, previously in the root script. */
-const LABEL_FONT = '700 12px Inter, Arial, sans-serif';
-let labelMeasureCtx = null;
-
-function measureTextWidth(text, font=LABEL_FONT) {
-    if (!labelMeasureCtx) {
-        labelMeasureCtx = document.createElement('canvas').getContext('2d');
-    }
-    labelMeasureCtx.font = font;
-    return labelMeasureCtx.measureText(text).width;
-}
-
-function setupAutoLabels(map, geoLayer, cfg) {
-    const labelFeatures = [];
-
-    geoLayer.eachLayer(featureLayer => {
-        const name = featureLayer.feature.properties[cfg.labelBy];
-        if (!name || typeof featureLayer.getBounds !== 'function') return;
-
-        featureLayer.bindTooltip(String(name), {
-            permanent: true,
-            direction: 'center',
-            className: cfg.labelClass || 'neighborhood-label',
-            interactive: false
-        });
-
-        labelFeatures.push({ layer: featureLayer, name: String(name) });
-    });
-
-    function rectsOverlap(a, b) {
-        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-    }
-
-    // Real screen positions of every visible point marker (grocery dots,
-    // restaurant pins/cluster bubbles) right now, so labels can dodge them
-    // instead of just dodging each other.
-    function collectMarkerObstacles() {
-        const mapRect = map.getContainer().getBoundingClientRect();
-        const els = map.getContainer().querySelectorAll('.label-obstacle');
-        const rects = [];
-
-        els.forEach(el => {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) return;
-            rects.push({
-                left: r.left - mapRect.left,
-                right: r.right - mapRect.left,
-                top: r.top - mapRect.top,
-                bottom: r.bottom - mapRect.top
-            });
-        });
-
-        return rects;
-    }
-
-    // Candidate offsets to try within a polygon's box, as fractions of its
-    // half-width/half-height — center first, then out toward each side and
-    // corner, so a label prefers the middle but will shift if something's
-    // in the way.
-    const CANDIDATE_OFFSETS = [
-        [0, 0],
-        [0, -0.35], [0, 0.35], [-0.3, 0], [0.3, 0],
-        [-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]
-    ];
-
-    function update() {
-        if (!map.hasLayer(geoLayer)) return;
-        const placedRects = [];
-        const markerObstacles = collectMarkerObstacles();
-
-        // Measure every candidate's on-screen box first, then place
-        // biggest-polygon-first so small neighborhoods yield space to
-        // large ones instead of whoever happens to iterate first.
-        const measured = labelFeatures.map(item => {
-            const bounds = item.layer.getBounds();
-            const nw = map.latLngToContainerPoint(bounds.getNorthWest());
-            const se = map.latLngToContainerPoint(bounds.getSouthEast());
-            return {
-                ...item,
-                boxWidth: Math.abs(se.x - nw.x),
-                boxHeight: Math.abs(se.y - nw.y),
-                center: map.latLngToContainerPoint(bounds.getCenter())
-            };
-        });
-
-        measured.sort((a, b) => (b.boxWidth * b.boxHeight) - (a.boxWidth * a.boxHeight));
-
-        measured.forEach(item => {
-            const textWidth = measureTextWidth(item.name, cfg.labelFont || LABEL_FONT);
-            const textHeight = 14;
-            const padding = 10;
-            const halfW = item.boxWidth / 2;
-            const halfH = item.boxHeight / 2;
-
-            const fitsBasicSize = item.boxWidth >= textWidth + padding && item.boxHeight >= textHeight + padding;
-
-            if (!fitsBasicSize) {
-                item.layer.closeTooltip();
-                return;
-            }
-
-            let chosen = null;
-
-            for (const [dx, dy] of CANDIDATE_OFFSETS) {
-                const cx = item.center.x + dx * halfW;
-                const cy = item.center.y + dy * halfH;
-
-                const rect = {
-                    left: cx - textWidth / 2 - 2,
-                    right: cx + textWidth / 2 + 2,
-                    top: cy - textHeight / 2 - 1,
-                    bottom: cy + textHeight / 2 + 1
-                };
-
-                // Stay inside the polygon's own box — an offset spot
-                // that's technically clear but sticks outside the shape
-                // isn't a real fit.
-                const withinBox =
-                    rect.left >= item.center.x - halfW && rect.right <= item.center.x + halfW &&
-                    rect.top >= item.center.y - halfH && rect.bottom <= item.center.y + halfH;
-
-                if (!withinBox) continue;
-                if (markerObstacles.some(o => rectsOverlap(rect, o))) continue;
-                if (placedRects.some(p => rectsOverlap(rect, p))) continue;
-
-                chosen = { rect, point: L.point(cx, cy) };
-                break;
-            }
-
-            if (!chosen) {
-                item.layer.closeTooltip();
-                return;
-            }
-
-            placedRects.push(chosen.rect);
-
-            // Pass the chosen position to openTooltip itself. Calling it without
-            // a position resets a polygon tooltip to its default center.
-            item.layer.openTooltip(map.containerPointToLatLng(chosen.point));
-        });
-    }
-
-    map.on('zoomend', update);
-    return update;
-}
-
-/* ---------- User location ----------
-   Watches the browser's geolocation and keeps a "you are here"
-   dot (with an accuracy halo) in sync on the map. Returns an
-   object exposing the last known position for other controls. */
-function enableUserLocation(map) {
-    if (!navigator.geolocation) {
-        return { getLatLng: () => null, follow: () => {} };
-    }
-
-    let marker = null;
-    let accuracyCircle = null;
-    let lastLatLng = null;
-    let watchId = null;
-    let following = false;
-    let needsFollowZoom = false;
-
-    const locationOptions = {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 15000
-    };
-
-    function updateLocation(pos) {
-        const { latitude, longitude, accuracy } = pos.coords;
-        lastLatLng = L.latLng(latitude, longitude);
-
-        if (!marker) {
-            accuracyCircle = L.circle(lastLatLng, {
-                radius: accuracy,
-                weight: 0,
-                fillColor: '#1F88FF',
-                fillOpacity: 0.12,
-                interactive: false
-            }).addTo(map);
-
-            marker = L.circleMarker(lastLatLng, {
-                radius: 7,
-                weight: 2,
-                color: '#fff',
-                fillColor: '#1F88FF',
-                fillOpacity: 1,
-                interactive: false
-            }).addTo(map);
-        } else {
-            marker.setLatLng(lastLatLng);
-            accuracyCircle.setLatLng(lastLatLng);
-            accuracyCircle.setRadius(accuracy);
-        }
-
-        if (following) {
-            if (needsFollowZoom) {
-                map.setView(lastLatLng,Math.max(map.getZoom(),15));
-                needsFollowZoom=false;
-            } else {
-                map.panTo(lastLatLng,{animate:true,duration:.5});
-            }
-        }
-    }
-
-    function locationError(err) {
-        console.warn('Geolocation unavailable:',err.message);
-    }
-
-    function startWatching() {
-        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-        watchId=navigator.geolocation.watchPosition(updateLocation,locationError,locationOptions);
-    }
-
-    function follow() {
-        following=true;
-        needsFollowZoom=true;
-        if (lastLatLng) {
-            map.setView(lastLatLng,Math.max(map.getZoom(),15));
-            needsFollowZoom=false;
-        }
-        navigator.geolocation.getCurrentPosition(updateLocation,locationError,locationOptions);
-        startWatching();
-    }
-
-    // Let the user inspect another part of the map without it snapping back.
-    // The location button resumes follow mode whenever desired.
-    map.on('dragstart',()=>{following=false;});
-
-    // Mobile browsers may suspend GPS while a tab is hidden or the phone is
-    // locked. Restart the watcher when the map becomes active again.
-    document.addEventListener('visibilitychange',()=>{
-        if (!document.hidden) startWatching();
-    });
-    window.addEventListener('pageshow',startWatching);
-
-    startWatching();
-
-    return { getLatLng: () => lastLatLng, follow };
-}
-
-/* Small "center on my location" button, styled to match Leaflet's
-   own zoom control so it fits right in above it. */
-function addLocateControl(map, locationApi) {
-    const LocateControl = L.Control.extend({
-        options: { position: 'bottomright' },
-        onAdd: function () {
-            const container = L.DomUtil.create('div', 'leaflet-bar locate-control');
-            const link = L.DomUtil.create('a', '', container);
-            link.href = '#';
-            link.title = 'Show my location';
-            link.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" class="locate-dot"/></svg>';
-
-            L.DomEvent.disableClickPropagation(container);
-            L.DomEvent.on(link, 'click', (e) => {
-                L.DomEvent.preventDefault(e);
-                locationApi.follow();
-            });
-
-            return container;
-        }
-    });
-
-    new LocateControl().addTo(map);
-}
-
+/* Location */
+let me,halo,watching=false;
+$('.fab').onclick=()=>{
+ if(!navigator.geolocation)return toast('Location isn’t available on this device');
+ const go=p=>{const ll=L.latLng(p.coords.latitude,p.coords.longitude);
+  if(!me){halo=L.circle(ll,{radius:p.coords.accuracy,weight:0,fillColor:'#2b7de9',fillOpacity:.14,interactive:false}).addTo(map);me=L.circleMarker(ll,{radius:8,weight:3,color:'#fff',fillColor:'#2b7de9',fillOpacity:1,interactive:false,className:'me'}).addTo(map);}
+  else{me.setLatLng(ll);halo.setLatLng(ll).setRadius(p.coords.accuracy);}
+  return ll;};
+ navigator.geolocation.getCurrentPosition(p=>{map.setView(go(p),15);if(!watching){watching=true;navigator.geolocation.watchPosition(go,()=>{},{enableHighAccuracy:true});}},()=>toast('Allow location access to see where you are'),{enableHighAccuracy:true,timeout:15000});
+};
 })();
