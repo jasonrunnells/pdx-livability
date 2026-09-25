@@ -44,7 +44,7 @@ const groups={},chips={},all=[];let selected=null,census=null;
 document.body.insertAdjacentHTML('beforeend',`<div class="top"><div class="topbar"><div class="search"><span class="home"></span><input type="search" placeholder="Search Portland" aria-label="Search" autocomplete="off"></div><button class="lbtn" aria-label="Map layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button></div><div class="results"></div><div class="menu" hidden></div></div><div class="dock"><div class="menu bmenu" hidden></div><button class="fab pin" aria-label="Drop an observation here"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/></svg></button><button class="fab bbtn" aria-label="Basemap" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></svg></button><button class="fab locate" aria-label="Show my location"><svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/></svg></button></div><section class="sheet" aria-hidden="true"><div class="grab"></div><button class="x" aria-label="Close">&times;</button><div class="body"></div></section>`);
 const home=$('.map-back-btn');if(home)$('.search .home').replaceWith(home);
 const sheet=$('.sheet'),body=$('.body',sheet),results=$('.results'),input=$('.search input');
-const openSheet=html=>{PX.lock=false;body.innerHTML=html;sheet.scrollTop=0;sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');document.body.classList.add('sheet-open');};
+const openSheet=html=>{PX.lock=false;body.innerHTML=html;sheet.scrollTop=0;sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');document.body.classList.add('sheet-open');PX.onCardRendered&&PX.onCardRendered();};
 const PX=window.PX={lock:false};
 const closeSheet=()=>{PX.lock=false;PX.onClose&&PX.onClose();sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');document.body.classList.remove('sheet-open');if(selected){selected.reset();selected=null;}};
 $('.x',sheet).onclick=closeSheet;
@@ -121,10 +121,12 @@ function hoodStats(layer,ll){
  if(!hit){const t=tractAt(ll);if(!t)return null;add(t);}
  return Object.fromEntries(HK.filter(k=>n[k]).map(k=>[k,sum[k]/n[k]]));
 }
+const starsHTML=attrs=>`<div class="stars-row"><div class="stars" ${attrs} data-value="0"><div class="stars-bg">☆☆☆☆☆</div><div class="stars-fg" style="width:0%">★★★★★</div></div></div>`;
 function hoodCard(p,hist,ll,layer){
  const now=p.ZHVI_2026_08,t=census?hoodStats(layer,ll):null,h=hist?.[p.RegionID];
  return `<h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div><div class="big">${usd(now)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
  <div class="pills"><div class="pill">${change(now,p.ZHVI_2025_08)}<span>Past year</span></div><div class="pill">${change(now,h?.['2021-08-31'])}<span>Past 5 years</span></div></div>${chart(h)}
+ ${starsHTML(`data-region="${p.RegionID}"`)}
  ${t?`<details><summary>Census estimates</summary><div class="grid">${stat('Median home value',usd(t.HOMEVAL_ME))}${stat('Median rent',usd(t.RENT_MED))}${stat('Monthly mortgage',usd(t.MORT_COST_))}${stat('Yearly property tax',usd(t.MORT_TAX_M))}${stat('Typical year built',t.YR_BUILT_M?Math.round(t.YR_BUILT_M):'–')}${stat('Household income',usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details>`:''}`;
 }
 const meter=(l,v,o)=>`<div class="stat wide"><div class="key" style="font-size:15px;color:var(--ink)"><span>${l}</span><b>${pct(v)}</b></div><div class="meter"><div class="bar"><i style="width:${v}%"></i></div>${o?`<u style="left:${o}%"></u>`:''}</div>${o?`<div class="key"><span>Oregon average ${pct(o)}</span></div>`:''}</div>`;
@@ -149,6 +151,11 @@ const obsColors={Yes:'#0f7b5f',No:'#d64545',Remember:'#e0a100'};
 
 /* Layers */
 let hl=null;
+function highlightOnly(ll,color){
+ if(selected)selected.reset();
+ hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color,weight:3,fillColor:color,fillOpacity:.2,interactive:false}).addTo(map);
+ selected={id:'_ext',reset(){if(hl)map.removeLayer(hl);hl=null;}};
+}
 function pick(layer,id,html,ll){
  PX.onClose&&PX.onClose();
  if(selected)selected.reset();
@@ -157,9 +164,7 @@ function pick(layer,id,html,ll){
  else{const c=layer.hc||'#0f7b5f';hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color:c,weight:3,fillColor:c,fillOpacity:.2,interactive:false}).addTo(map);selected={id,reset(){if(hl)map.removeLayer(hl);hl=null;}};}
  openSheet(html);
  if(poly){if(mobile.matches)map.panTo(ll,{animate:true});return;}
- const soft=['observations','explore','homes'].includes(id);
- const z=mobile.matches?(soft?14:Math.max(map.getZoom(),15)):Math.max(map.getZoom(),15);
- const shift=mobile.matches?[0,sheet.offsetHeight*(soft?.62:.5)]:[-198,0];
+ const z=Math.max(map.getZoom(),15),shift=mobile.matches?[0,sheet.offsetHeight/2]:[-198,0];
  map.flyTo(map.unproject(map.project(ll,z).add(shift),z),z,{duration:.6});
 }
 const styleOf=id=>{const c=specs.find(s=>s.id===id).color;return {color:c,weight:id==='cities'?2.4:1.9,opacity:.95,fillColor:c,fillOpacity:.12};};
@@ -249,7 +254,7 @@ $('.locate').onclick=()=>{
   return ll;};
  navigator.geolocation.getCurrentPosition(p=>{map.setView(go(p),15);if(!watching){watching=true;navigator.geolocation.watchPosition(go,()=>{},{enableHighAccuracy:true});}},()=>toast('Allow location access to see where you are'),{enableHighAccuracy:true,timeout:15000});
 };
-Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,
+Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,highlightOnly,
  toast:t=>toast(t,5000),
  register:(sp,g)=>{specs.push(sp);mkRow(specs.length-1===0?sp:sp,specs.length-1);groups[sp.id]=g;chips[sp.id].disabled=false;},
  pinBtn:$('.pin')});

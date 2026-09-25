@@ -1,39 +1,85 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Maps & Data</title>
-
-    <link rel="stylesheet" href="styles.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portland — a shared map</title>
+<meta name="theme-color" content="#0f7b5f">
+<link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
 
-<div class="container">
+<main>
+  <section class="hero">
+    <h1>Portland</h1>
+    <p class="lede">A Portland livability dashboard. See the latest updates and add homes directly to the map.</p>
+    <a class="cta" href="maps/explorer/index.html">Open the map</a>
+  </section>
 
-    <header>
+  <div class="gate" id="gate">
+    <p>Sign in to see recent updates and add homes.</p>
+    <form id="signin">
+      <input type="email" name="email" placeholder="Email" autocomplete="username" required>
+      <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+      <p class="err" id="signinErr"></p>
+    </form>
+  </div>
 
-        <p class="eyebrow">Interactive Maps & Data</p>
+  <section class="authed" id="authed" hidden>
 
-        <h1>Portland Livability</h1>
+    <section class="block">
+      <div class="block-head">
+        <h2>Recent updates</h2>
+        <div class="nav" data-for="updatesGrid">
+          <button type="button" class="navbtn prev" aria-label="Scroll left">&#8249;</button>
+          <button type="button" class="navbtn next" aria-label="Scroll right">&#8250;</button>
+        </div>
+      </div>
+      <div class="row updates" id="updatesGrid"></div>
+    </section>
 
+    <section class="block">
+      <div class="block-head">
+        <h2>Homes</h2>
+        <div class="head-right">
+          <div class="nav" data-for="homesGrid">
+            <button type="button" class="navbtn prev" aria-label="Scroll left">&#8249;</button>
+            <button type="button" class="navbtn next" aria-label="Scroll right">&#8250;</button>
+          </div>
+          <button class="add" id="addHomeBtn">Add a home</button>
+        </div>
+      </div>
 
-    </header>
+      <form class="homeform" id="homeForm" hidden>
+        <div class="addr-wrap">
+          <input name="address" placeholder="Address" autocomplete="off" required>
+          <div class="addr-results" id="addrResults"></div>
+        </div>
+        <input name="link" inputmode="url" placeholder="Listing link">
+        <input name="price" inputmode="numeric" placeholder="Price">
+        <div class="row3">
+          <input name="beds" inputmode="decimal" placeholder="Beds">
+          <input name="baths" inputmode="decimal" placeholder="Baths">
+          <input name="sqft" inputmode="numeric" placeholder="Sq ft">
+        </div>
+        <textarea name="note" rows="3" placeholder="Notes"></textarea>
+        <label class="photobtn">Add photos<input type="file" accept="image/*" multiple hidden></label>
+        <div class="thumbs" id="homeThumbs"></div>
+        <p class="err" id="homeErr"></p>
+        <div class="formacts">
+          <button type="button" class="ghost" id="cancelHome">Cancel</button>
+          <button type="submit" id="saveHome" disabled>Save home</button>
+        </div>
+      </form>
 
+      <div class="row homes" id="homesGrid"></div>
+    </section>
 
-    <main>
+  </section>
+</main>
 
-        <section class="map-grid">
-            <a class="map-card" href="maps/explorer/index.html">
-                <h2>Explore Portland</h2>
-                <p>Neighborhood home values, census data, places, and trip observations in one map.</p>
-            </a>
-        </section>
-
-    </main>
-
-</div>
-
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
 </body>
 </html>

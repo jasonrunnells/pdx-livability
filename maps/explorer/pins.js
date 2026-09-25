@@ -49,13 +49,45 @@ function upsert(r){
 function drop(id,keep){const m=marks.get(id);if(m){Object.values(groups).forEach(g=>g.removeLayer(m));marks.delete(id);}if(!keep)rows.delete(id);}
 function open(id){const r=rows.get(id),m=marks.get(id);if(!r||!m)return;P.pick(m,KINDS[r.kind].id,card(r),m.getLatLng());P.body.onclick=e=>act(e,id);}
 
+/* Star ratings: 5 stars, half-star steps, click position sets the value instantly */
+function paintStars(el,v){el.dataset.value=v;el.querySelector('.stars-fg').style.width=(v/5*100)+'%';}
+function wireStars(el,onChange){
+ el.addEventListener('click',e=>{
+  const r=el.getBoundingClientRect(),x=e.clientX-r.left,raw=Math.min(5,Math.max(.5,x/r.width*5)),v=Math.round(raw*2)/2;
+  paintStars(el,v);onChange(v);
+ });
+}
+async function bindNeighborhoodStars(el){
+ if(!user){el.classList.add('locked');el.insertAdjacentHTML('afterend','<div class="stars-hint">Sign in on the map to rate neighborhoods</div>');return;}
+ const region=+el.dataset.region;
+ const {data}=await sb.from('neighborhood_ratings').select('rating').eq('region_id',region).maybeSingle();
+ paintStars(el,data?.rating||0);
+ wireStars(el,async v=>{
+  const {error}=await sb.from('neighborhood_ratings').upsert({region_id:region,rating:v,updated_by_name:user.user_metadata?.name||null});
+  if(error)P.toast(error.message);
+ });
+}
+PX.onCardRendered=()=>{
+ P.body.querySelectorAll('.stars').forEach(el=>{
+  if(el.dataset.kind==='home'){
+   wireStars(el,async v=>{
+    const {data,error}=await sb.from('places').update({rating:v}).eq('id',el.dataset.id).select().single();
+    if(error)return P.toast(error.message);
+    upsert(data);
+   });
+  }else if(el.dataset.region){
+   bindNeighborhoodStars(el);
+  }
+ });
+};
+
 /* Cards */
 function card(r){
  const k=KINDS[r.kind],home=r.kind==='home',t=home?(r.address||r.title||k.one):(r.title||(r.note||'').slice(0,50)||k.one);
  const who=[r.created_by_name,new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})].filter(Boolean).join(' · ');
  const st=home?`<div class="strip">${[r.beds!=null?`${r.beds} bd`:null,r.baths!=null?`${r.baths} ba`:null,r.sqft?`${r.sqft.toLocaleString()} sqft`:null].filter(Boolean).join(' · ')||'No details yet'}</div>`:'';
  return `<h2${home?' class="addr"':''}>${esc(t)}</h2><div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div>
- ${home?`<div class="big">${r.price?usd(r.price):'No price'}</div>${st}`:''}
+ ${home?`<div class="big">${r.price?usd(r.price):'No price'}</div>${st}<div class="stars-row"><div class="stars" data-kind="home" data-id="${r.id}" data-value="${r.rating||0}"><div class="stars-bg">☆☆☆☆☆</div><div class="stars-fg" style="width:${(r.rating||0)/5*100}%">★★★★★</div></div></div>`:''}
  ${r.note?`<div class="note">${esc(r.note)}</div>`:''}
  ${(r.photos||[]).length?`<div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>`:''}
  <div class="pills two">${[`<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>`,r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:null].filter(Boolean).join('')}</div>
@@ -68,7 +100,7 @@ async function act(e,id){
  if(b.dataset.act==='del'){if(!confirm('Delete this pin?'))return;const {error}=await sb.from('places').delete().eq('id',id);if(error)return P.toast(error.message);drop(id);P.closeSheet();return;}
  const patch=r.kind==='home'?{visited:!r.visited}:{kind:'observation'};
  const {data,error}=await sb.from('places').update(patch).eq('id',id).select().single();if(error)return P.toast(error.message);
- upsert(data);if(r.kind==='home'){P.body.innerHTML=card(data);}else{show('observation');form({...data});}
+ upsert(data);if(r.kind==='home'){P.body.innerHTML=card(data);PX.onCardRendered();}else{show('observation');form({...data});}
 }
 
 /* Form */
@@ -143,6 +175,19 @@ P.onAddr=async q=>{
  return (await r.json()).map(x=>({label:x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
 };
 P.onAddrPick=a=>withAuth(()=>newPin('home',a.lat,a.lng,{address:a.label}));
+
+/* Zoom to a pin when the homepage links here as ?pin=<id> — center only, don't open the card */
+const wantPin=new URLSearchParams(location.search).get('pin');
+if(wantPin)withAuth(()=>{
+ const r=rows.get(wantPin);
+ if(!r)return P.toast("Couldn't find that pin.");
+ show(r.kind);
+ setTimeout(()=>{
+  const ll=[r.lat,r.lng];
+  map.flyTo(ll,Math.max(map.getZoom(),16));
+  P.highlightOnly(ll,KINDS[r.kind].color);
+ },300);
+});
 
 start();
 })();
