@@ -9,9 +9,8 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping the database
+      - name: Ping the project
         run: |
           curl -s -o /dev/null -w "HTTP %{http_code}\n" \
-            "https://qstztxydqhuahgivpztx.supabase.co/rest/v1/places?select=id&limit=1" \
-            -H "apikey: sb_publishable_5MfonGtWBM7R3rgYtEDdkg_TnUOeWJx" \
-            -H "Authorization: Bearer sb_publishable_5MfonGtWBM7R3rgYtEDdkg_TnUOeWJx"
+            "https://qstztxydqhuahgivpztx.supabase.co/auth/v1/health" \
+            -H "apikey: sb_publishable_5MfonGtWBM7R3rgYtEDdkg_TnUOeWJx"
