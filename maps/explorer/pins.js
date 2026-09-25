@@ -53,13 +53,12 @@ function open(id){const r=rows.get(id),m=marks.get(id);if(!r||!m)return;P.pick(m
 function card(r){
  const k=KINDS[r.kind],home=r.kind==='home',t=home?(r.address||r.title||k.one):(r.title||(r.note||'').slice(0,50)||k.one);
  const who=[r.created_by_name,new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})].filter(Boolean).join(' · ');
- const st=home?`<div class="grid three">${stat('Beds',r.beds??'–','sm')}${stat('Baths',r.baths??'–','sm')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–','sm')}</div>`:'';
+ const st=home?`<div class="strip">${[r.beds!=null?`${r.beds} bd`:null,r.baths!=null?`${r.baths} ba`:null,r.sqft?`${r.sqft.toLocaleString()} sqft`:null].filter(Boolean).join(' · ')||'No details yet'}</div>`:'';
  return `<h2${home?' class="addr"':''}>${esc(t)}</h2><div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div>
  ${home?`<div class="big">${r.price?usd(r.price):'No price'}</div>${st}`:''}
- ${r.note?(home?`<details><summary>Notes</summary><div class="note">${esc(r.note)}</div></details>`:`<div class="note">${esc(r.note)}</div>`):''}
+ ${r.note?`<div class="note">${esc(r.note)}</div>`:''}
  ${(r.photos||[]).length?`<div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>`:''}
- <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>
- ${r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:''}
+ <div class="pills two">${[`<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>`,r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:null].filter(Boolean).join('')}</div>
  <div class="acts">${r.kind!=='observation'?`<button data-act="visit">${home?(r.visited?'Undo visited':'Mark visited'):'Mark visited'}</button>`:''}<button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div>`;
 }
 const stat=(l,v,cls)=>`<div class="stat${cls?' '+cls:''}"><span>${l}</span><b>${esc(v)}</b></div>`;
