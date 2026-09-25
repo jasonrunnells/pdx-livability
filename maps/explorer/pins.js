@@ -53,16 +53,16 @@ function open(id){const r=rows.get(id),m=marks.get(id);if(!r||!m)return;P.pick(m
 function card(r){
  const k=KINDS[r.kind],home=r.kind==='home',t=home?(r.address||r.title||k.one):(r.title||(r.note||'').slice(0,50)||k.one);
  const who=[r.created_by_name,new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})].filter(Boolean).join(' · ');
- const st=home?`<div class="grid">${stat('Beds',r.beds??'–')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–')}</div>`:'';
+ const st=home?`<div class="grid three">${stat('Beds',r.beds??'–','sm')}${stat('Baths',r.baths??'–','sm')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–','sm')}</div>`:'';
  return `<h2${home?' class="addr"':''}>${esc(t)}</h2><div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div>
  ${home?`<div class="big">${r.price?usd(r.price):'No price'}</div>${st}`:''}
- ${r.note?`<div class="note">${esc(r.note)}</div>`:''}
+ ${r.note?(home?`<details><summary>Notes</summary><div class="note">${esc(r.note)}</div></details>`:`<div class="note">${esc(r.note)}</div>`):''}
  ${(r.photos||[]).length?`<div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>`:''}
  <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>
  ${r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:''}
  <div class="acts">${r.kind!=='observation'?`<button data-act="visit">${home?(r.visited?'Undo visited':'Mark visited'):'Mark visited'}</button>`:''}<button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div>`;
 }
-const stat=(l,v)=>`<div class="stat"><span>${l}</span><b>${esc(v)}</b></div>`;
+const stat=(l,v,cls)=>`<div class="stat${cls?' '+cls:''}"><span>${l}</span><b>${esc(v)}</b></div>`;
 async function act(e,id){
  const b=e.target.closest('[data-act]');if(!b)return;const r=rows.get(id);
  if(b.dataset.act==='edit')return form({...r});
@@ -88,7 +88,7 @@ function form(o){
  P.openSheet(`<h2>${o.id?'Edit':'New'} ${KINDS[k].one.toLowerCase()}</h2><form class="pf">
   ${H?`<input name="address" placeholder="Address" value="${v(o.address)}">`:`<input name="title" placeholder="${k==='explore'?'Place name':'Title (optional)'}" value="${v(o.title)}">`}
   ${k!=='observation'?`<input name="link" inputmode="url" placeholder="${H?'Listing link':'Link (optional)'}" value="${v(o.link)}">`:''}
-  ${H?`<div class="pr"><input name="price" inputmode="numeric" placeholder="Price" value="${v(o.price)}"><input name="beds" inputmode="decimal" placeholder="Beds" value="${v(o.beds)}"><input name="sqft" inputmode="numeric" placeholder="Sq ft" value="${v(o.sqft)}"></div>`:''}
+  ${H?`<input name="price" inputmode="numeric" placeholder="Price" value="${v(o.price)}"><div class="pr"><input name="beds" inputmode="decimal" placeholder="Beds" value="${v(o.beds)}"><input name="baths" inputmode="decimal" placeholder="Baths" value="${v(o.baths)}"><input name="sqft" inputmode="numeric" placeholder="Sq ft" value="${v(o.sqft)}"></div>`:''}
   <textarea name="note" rows="3" placeholder="Notes">${v(o.note)}</textarea>
   <label class="pph">Add photos<input type="file" accept="image/*" multiple hidden></label><div class="pth"></div>
   <div class="perr"></div><button class="btn" disabled>Save</button></form>`);
@@ -105,7 +105,7 @@ function form(o){
   try{
    const urls=[];for(const x of files)urls.push(await upload(x));
    const val=n=>gv(n)||null;
-   const rec={kind:k,lat:o.lat,lng:o.lng,title:val('title'),note:val('note'),address:H?val('address'):null,link:norm(val('link')),price:H?num(gv('price')):null,beds:H?num(gv('beds')):null,sqft:H?num(gv('sqft')):null,photos:[...pics,...urls]};
+   const rec={kind:k,lat:o.lat,lng:o.lng,title:val('title'),note:val('note'),address:H?val('address'):null,link:norm(val('link')),price:H?num(gv('price')):null,beds:H?num(gv('beds')):null,baths:H?num(gv('baths')):null,sqft:H?num(gv('sqft')):null,photos:[...pics,...urls]};
    const name=user.user_metadata?.name||null;
    const q=o.id?sb.from('places').update(rec).eq('id',o.id):sb.from('places').insert({...rec,created_by_name:name});
    const {data,error}=await q.select().single();if(error)throw error;

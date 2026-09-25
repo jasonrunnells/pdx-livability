@@ -157,7 +157,9 @@ function pick(layer,id,html,ll){
  else{const c=layer.hc||'#0f7b5f';hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color:c,weight:3,fillColor:c,fillOpacity:.2,interactive:false}).addTo(map);selected={id,reset(){if(hl)map.removeLayer(hl);hl=null;}};}
  openSheet(html);
  if(poly){if(mobile.matches)map.panTo(ll,{animate:true});return;}
- const z=Math.max(map.getZoom(),15),shift=mobile.matches?[0,sheet.offsetHeight/2]:[-198,0];
+ const soft=['observations','explore','homes'].includes(id);
+ const z=mobile.matches?(soft?14:Math.max(map.getZoom(),15)):Math.max(map.getZoom(),15);
+ const shift=mobile.matches?[0,sheet.offsetHeight*(soft?.62:.5)]:[-198,0];
  map.flyTo(map.unproject(map.project(ll,z).add(shift),z),z,{duration:.6});
 }
 const styleOf=id=>{const c=specs.find(s=>s.id===id).color;return {color:c,weight:id==='cities'?2.4:1.9,opacity:.95,fillColor:c,fillOpacity:.12};};
