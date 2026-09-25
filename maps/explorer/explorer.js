@@ -121,13 +121,14 @@ function hoodStats(layer,ll){
  if(!hit){const t=tractAt(ll);if(!t)return null;add(t);}
  return Object.fromEntries(HK.filter(k=>n[k]).map(k=>[k,sum[k]/n[k]]));
 }
-const starsHTML=attrs=>`<div class="stars-row"><div class="stars" ${attrs} data-value="0"><div class="stars-bg">☆☆☆☆☆</div><div class="stars-fg" style="width:0%">★★★★★</div></div></div>`;
+const starsHTML=attrs=>`<div class="stars-row"><div class="stars" ${attrs} data-value="0"><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span></div></div>`;
 function hoodCard(p,hist,ll,layer){
  const now=p.ZHVI_2026_08,t=census?hoodStats(layer,ll):null,h=hist?.[p.RegionID];
- return `<h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div><div class="big">${usd(now)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
- <div class="pills"><div class="pill">${change(now,p.ZHVI_2025_08)}<span>Past year</span></div><div class="pill">${change(now,h?.['2021-08-31'])}<span>Past 5 years</span></div></div>${chart(h)}
- ${starsHTML(`data-region="${p.RegionID}"`)}
- ${t?`<details><summary>Census estimates</summary><div class="grid">${stat('Median home value',usd(t.HOMEVAL_ME))}${stat('Median rent',usd(t.RENT_MED))}${stat('Monthly mortgage',usd(t.MORT_COST_))}${stat('Yearly property tax',usd(t.MORT_TAX_M))}${stat('Typical year built',t.YR_BUILT_M?Math.round(t.YR_BUILT_M):'–')}${stat('Household income',usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details>`:''}`;
+ return `<div class="sec"><h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div>
+ ${starsHTML(`data-region="${p.RegionID}"`)}</div>
+ <div class="sec"><div class="big">${usd(now)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
+ <div class="pills"><div class="pill">${change(now,p.ZHVI_2025_08)}<span>Past year</span></div><div class="pill">${change(now,h?.['2021-08-31'])}<span>Past 5 years</span></div></div>${chart(h)}</div>
+ ${t?`<div class="sec"><details><summary>Census estimates</summary><div class="grid">${stat('Median home value',usd(t.HOMEVAL_ME))}${stat('Median rent',usd(t.RENT_MED))}${stat('Monthly mortgage',usd(t.MORT_COST_))}${stat('Yearly property tax',usd(t.MORT_TAX_M))}${stat('Typical year built',t.YR_BUILT_M?Math.round(t.YR_BUILT_M):'–')}${stat('Household income',usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details></div>`:''}`;
 }
 const meter=(l,v,o)=>`<div class="stat wide"><div class="key" style="font-size:15px;color:var(--ink)"><span>${l}</span><b>${pct(v)}</b></div><div class="meter"><div class="bar"><i style="width:${v}%"></i></div>${o?`<u style="left:${o}%"></u>`:''}</div>${o?`<div class="key"><span>Oregon average ${pct(o)}</span></div>`:''}</div>`;
 function schools(p){
