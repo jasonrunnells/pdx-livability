@@ -27,6 +27,10 @@ const setBase=id=>{
  Object.entries(baseBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',String(k===id)));
 };
 map.setView([45.52,-122.67],11);
+addEventListener('resize',()=>map.invalidateSize());
+addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),300));
+if(window.visualViewport)visualViewport.addEventListener('resize',()=>map.invalidateSize());
+new ResizeObserver(()=>map.invalidateSize()).observe($('#map'));
 
 const specs=[
  {id:'neighborhoods',label:'Neighborhoods',color:'#0f7b5f',g:'a'},

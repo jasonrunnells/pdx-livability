@@ -51,16 +51,16 @@ function open(id){const r=rows.get(id),m=marks.get(id);if(!r||!m)return;P.pick(m
 
 /* Cards */
 function card(r){
- const k=KINDS[r.kind],t=r.title||r.address||(r.note||'').slice(0,50)||k.one;
+ const k=KINDS[r.kind],home=r.kind==='home',t=home?(r.address||r.title||k.one):(r.title||(r.note||'').slice(0,50)||k.one);
  const who=[r.created_by_name,new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})].filter(Boolean).join(' · ');
- const st=r.kind==='home'?`<div class="grid">${stat('Beds',r.beds??'–')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–')}</div>`:'';
- return `<h2>${esc(t)}</h2><div class="sub">${k.one}${r.visited&&r.kind==='home'?' · Visited':''} · ${esc(who)}</div>
- ${r.kind==='home'?`<div class="big">${r.price?usd(r.price):'No price'}</div>${r.title&&r.address?`<div class="sub">${esc(r.address)}</div>`:''}${st}`:''}
+ const st=home?`<div class="grid">${stat('Beds',r.beds??'–')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–')}</div>`:'';
+ return `<h2${home?' class="addr"':''}>${esc(t)}</h2><div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div>
+ ${home?`<div class="big">${r.price?usd(r.price):'No price'}</div>${st}`:''}
  ${r.note?`<div class="note">${esc(r.note)}</div>`:''}
  ${(r.photos||[]).length?`<div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>`:''}
- ${r.link?`<a class="btn" target="_blank" rel="noopener" href="${esc(r.link)}">${r.kind==='home'?'Open listing':'Open link'}</a>`:''}
- <a class="btn ghost" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>
- <div class="acts">${r.kind!=='observation'?`<button data-act="visit">${r.kind==='home'?(r.visited?'Undo visited':'Mark visited'):'Mark visited'}</button>`:''}<button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div>`;
+ <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>
+ ${r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:''}
+ <div class="acts">${r.kind!=='observation'?`<button data-act="visit">${home?(r.visited?'Undo visited':'Mark visited'):'Mark visited'}</button>`:''}<button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div>`;
 }
 const stat=(l,v)=>`<div class="stat"><span>${l}</span><b>${esc(v)}</b></div>`;
 async function act(e,id){
