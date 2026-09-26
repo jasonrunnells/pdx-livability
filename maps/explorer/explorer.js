@@ -38,7 +38,7 @@ const specs=[
  {id:'cities',label:'Cities',color:'#5b5bd6',g:'a'},
  {id:'grocery',label:'Groceries',color:'#2b7de9',g:'p'},
  {id:'restaurants',label:'Food',color:'#e5484d',g:'p'}];
-const groups={},chips={},all=[];let selected=null,census=null;
+const groups={},chips={},all=[];let selected=null,census=null,neighborhoodsLayer=null,citiesLayer=null;
 
 /* DOM */
 document.body.insertAdjacentHTML('beforeend',`<div class="top"><div class="topbar"><div class="search"><span class="home"></span><input type="search" placeholder="Search Portland" aria-label="Search" autocomplete="off"></div><button class="lbtn" aria-label="Map layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button></div><div class="results"></div><div class="menu" hidden></div></div><div class="dock"><div class="menu bmenu" hidden></div><button class="fab pin" aria-label="Drop an observation here"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/></svg></button><button class="fab bbtn" aria-label="Basemap" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></svg></button><button class="fab locate" aria-label="Show my location"><svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/></svg></button></div><section class="sheet" aria-hidden="true"><div class="grab"></div><button class="x" aria-label="Close">&times;</button><div class="body"></div></section>`);
@@ -109,6 +109,9 @@ function chart(series){
 }
 function inRing(p,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j];if((a.lat>p.lat)!==(b.lat>p.lat)&&p.lng<(b.lng-a.lng)*(p.lat-a.lat)/(b.lat-a.lat)+a.lng)c=!c;}return c;}
 function tractAt(ll){let hit=null;census?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
+function hoodAt(ll){let hit=null;neighborhoodsLayer?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
+function cityAt(ll){let hit=null;citiesLayer?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
+function cityAt(ll){let hit=null;citiesLayer?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
 const HK=['HOMEVAL_ME','RENT_MED','MORT_COST_','MORT_TAX_M','YR_BUILT_M','INC_HH_MED'];
 function hoodStats(layer,ll){
  const b=layer.getBounds(),g=layer.getLatLngs(),polys=Array.isArray(g[0][0])?g:[g],N=16,sum={},n={};let hit=0;
@@ -121,12 +124,11 @@ function hoodStats(layer,ll){
  if(!hit){const t=tractAt(ll);if(!t)return null;add(t);}
  return Object.fromEntries(HK.filter(k=>n[k]).map(k=>[k,sum[k]/n[k]]));
 }
-const starsHTML=attrs=>`<div class="stars-row"><div class="stars" ${attrs} data-value="0"><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span></div></div>`;
+const starsHTML=attrs=>`<div class="stars" ${attrs} data-value="0"><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span></div>`;
 function hoodCard(p,hist,ll,layer){
  const now=p.ZHVI_2026_08,t=census?hoodStats(layer,ll):null,h=hist?.[p.RegionID];
- return `<div class="sec"><h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div>
- ${starsHTML(`data-region="${p.RegionID}"`)}</div>
- <div class="sec"><div class="big">${usd(now)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
+ return `<div class="sec"><h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div></div>
+ <div class="sec"><div class="price-row"><div class="big">${usd(now)}</div>${starsHTML(`data-region="${p.RegionID}"`)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
  <div class="pills"><div class="pill">${change(now,p.ZHVI_2025_08)}<span>Past year</span></div><div class="pill">${change(now,h?.['2021-08-31'])}<span>Past 5 years</span></div></div>${chart(h)}</div>
  ${t?`<div class="sec"><details><summary>Census estimates</summary><div class="grid">${stat('Median home value',usd(t.HOMEVAL_ME))}${stat('Median rent',usd(t.RENT_MED))}${stat('Monthly mortgage',usd(t.MORT_COST_))}${stat('Yearly property tax',usd(t.MORT_TAX_M))}${stat('Typical year built',t.YR_BUILT_M?Math.round(t.YR_BUILT_M):'–')}${stat('Household income',usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details></div>`:''}`;
 }
@@ -179,6 +181,9 @@ function build(s,data,hist){
   }});
   if(items.length){g.items=items;g.labels=()=>labels(g);map.on('moveend',()=>map.hasLayer(g)&&labels(g));}
   if(s.id==='census')census=g;
+  if(s.id==='neighborhoods')neighborhoodsLayer=g;
+  if(s.id==='cities')citiesLayer=g;
+  if(s.id==='cities')citiesLayer=g;
  }else{
   const gj=L.geoJSON(data,{pane,pointToLayer:(f,ll)=>{const c=s.id==='observations'?obsColors[f.properties.Observation_Type]||s.color:s.color;const m=L.marker(ll,{icon:L.divIcon({className:'',html:`<i class="dot" style="background:${c}"></i>`,iconSize:[22,22]})});m.hc=c;return m;},
    onEachFeature:(f,l)=>{const p=f.properties,ll=l.getLatLng();l.on('click',e=>{L.DomEvent.stopPropagation(e);
@@ -255,7 +260,7 @@ $('.locate').onclick=()=>{
   return ll;};
  navigator.geolocation.getCurrentPosition(p=>{map.setView(go(p),15);if(!watching){watching=true;navigator.geolocation.watchPosition(go,()=>{},{enableHighAccuracy:true});}},()=>toast('Allow location access to see where you are'),{enableHighAccuracy:true,timeout:15000});
 };
-Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,highlightOnly,
+Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,highlightOnly,hoodAt,cityAt,cityAt,
  toast:t=>toast(t,5000),
  register:(sp,g)=>{specs.push(sp);mkRow(specs.length-1===0?sp:sp,specs.length-1);groups[sp.id]=g;chips[sp.id].disabled=false;},
  pinBtn:$('.pin')});

@@ -65,7 +65,13 @@ details[open] summary:after{content:"–"}
 .btn{display:block;margin-top:14px;padding:13px;border-radius:14px;background:var(--acc);color:#fff;font-weight:700;text-align:center;text-decoration:none}
 .badge{display:inline-block;padding:3px 10px;border-radius:12px;color:#fff;font-size:12px;font-weight:700;background:var(--c)}
 .note{margin:12px 0;padding:12px;border-radius:14px;background:var(--bg2);white-space:pre-wrap;overflow-wrap:anywhere}
-.photos{display:flex;margin:12px 0 0;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;border-radius:14px;background:var(--bg2)}
+.photos{display:flex;margin:0;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;border-radius:14px;background:var(--bg2);scrollbar-width:none;-ms-overflow-style:none}
+.photos::-webkit-scrollbar{display:none}
+.photowrap{position:relative}
+.parrow{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:30px;border:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:18px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.parrow.prev{left:8px}
+.parrow.next{right:8px}
+.parrow:disabled{opacity:.25;cursor:default}
 .photos img{flex:0 0 100%;width:100%;height:190px;object-fit:cover;scroll-snap-align:start;background:var(--bg2)}
 .nl{color:var(--ink);background:none;border:0;box-shadow:none;font:700 12px var(--f);letter-spacing:-.01em;text-shadow:0 0 4px var(--bg),0 0 4px var(--bg),0 0 2px var(--bg);pointer-events:none}
 .nl:before{display:none}
@@ -128,7 +134,10 @@ h2.addr{font:700 17px/1.3 var(--f);letter-spacing:-.01em}
 .acts button:active{background:var(--bg2)}
 .acts .danger{color:var(--down);border-color:var(--down)}
 .results .rh{margin:10px 16px 2px;font:700 12px var(--f);color:var(--mute)}
-.stars-row{margin:12px 0}
+.price-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.price-row .big{margin:0}
+.price-row+.sub{margin-top:10px}
+.nb{color:var(--acc);font-weight:700}
 .stars{display:inline-flex;gap:3px;cursor:pointer;user-select:none;touch-action:none}
 .stars.locked{cursor:default;opacity:.5}
 .star{position:relative;width:24px;height:24px;font-size:24px;line-height:1}

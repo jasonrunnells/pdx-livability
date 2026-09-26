@@ -100,17 +100,28 @@ PX.onCardRendered=()=>{
    bindNeighborhoodStars(el);
   }
  });
+ P.body.querySelectorAll('.photowrap').forEach(wrap=>{
+  const row=wrap.querySelector('.photos'),prev=wrap.querySelector('.prev'),next=wrap.querySelector('.next');
+  if(!prev)return;
+  const update=()=>{prev.disabled=row.scrollLeft<=2;next.disabled=row.scrollLeft>=row.scrollWidth-row.clientWidth-2;};
+  prev.onclick=()=>row.scrollBy({left:-row.clientWidth,behavior:'smooth'});
+  next.onclick=()=>row.scrollBy({left:row.clientWidth,behavior:'smooth'});
+  row.addEventListener('scroll',update);
+  update();
+ });
 };
 
 /* Cards */
 function card(r){
  const k=KINDS[r.kind],home=r.kind==='home',t=home?(r.address||r.title||k.one):(r.title||(r.note||'').slice(0,50)||k.one);
  const who=[r.created_by_name,new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})].filter(Boolean).join(' · ');
- const st=home?`<div class="strip">${[r.beds!=null?`${r.beds} bd`:null,r.baths!=null?`${r.baths} ba`:null,r.sqft?`${r.sqft.toLocaleString()} sqft`:null].filter(Boolean).join(' · ')||'No details yet'}</div>`:'';
- return `<div class="sec"><h2${home?' class="addr"':''}>${esc(t)}</h2><div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div>
- ${home?`<div class="stars-row"><div class="stars" data-kind="home" data-id="${r.id}" data-value="${r.rating||0}">${STAR_CELLS}</div></div>`:''}</div>
- ${home?`<div class="sec"><div class="big">${r.price?usd(r.price):'No price'}</div>${st}</div>`:''}
- ${((r.photos||[]).length||r.note)?`<div class="sec">${(r.photos||[]).length?`<div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>`:''}${r.note?`<div class="note">${esc(r.note)}</div>`:''}</div>`:''}
+ const st=home?`<div class="grid three">${stat('Bed',r.beds??'–','sm')}${stat('Bath',r.baths??'–','sm')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–','sm')}</div>`:'';
+ const hood=home?P.hoodAt({lat:r.lat,lng:r.lng}):null;
+ const cityHit=home?P.cityAt({lat:r.lat,lng:r.lng}):null;
+ const nbLine=(hood||cityHit)?`Neighborhood: <span class="nb">${hood?esc(hood.Name):'N/A'}</span> · City: <span class="nb">${cityHit?esc(cityHit.NAME):'N/A'}</span>`:'';
+ return `<div class="sec"><h2${home?' class="addr"':''}>${esc(t)}</h2>${nbLine?`<div class="sub">${nbLine}</div>`:''}<div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div></div>
+ ${home?`<div class="sec"><div class="price-row"><div class="big">${r.price?usd(r.price):'No price'}</div><div class="stars" data-kind="home" data-id="${r.id}" data-value="${r.rating||0}">${STAR_CELLS}</div></div>${st}</div>`:''}
+ ${((r.photos||[]).length||r.note)?`<div class="sec">${(r.photos||[]).length?`<div class="photowrap"><div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${r.photos.length>1?'<button type="button" class="parrow prev" aria-label="Previous photo">&#8249;</button><button type="button" class="parrow next" aria-label="Next photo">&#8250;</button>':''}</div>`:''}${r.note?`<div class="note">${esc(r.note)}</div>`:''}</div>`:''}
  <div class="sec"><div class="pills two">${[`<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>`,r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:null].filter(Boolean).join('')}</div>
  <div class="acts">${r.kind!=='observation'?`<button data-act="visit">${home?(r.visited?'Undo visited':'Mark visited'):'Mark visited'}</button>`:''}<button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>`;
 }
@@ -190,10 +201,22 @@ map.on('contextmenu',e=>addExplore(e.latlng));
 el.addEventListener('contextmenu',e=>e.preventDefault());
 let hinted=false;map.on('click',()=>{if(!hinted&&user){hinted=true;P.toast('Tip: press and hold anywhere to save a place to explore');}});
 
-/* Address lookup (OpenStreetMap, free) */
+/* Address lookup (OpenStreetMap, free): build a clean "123 SW Main St, Portland, OR 97225" line */
+const DIR_ABBR={North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'};
+const SUF_ABBR={Street:'St',Avenue:'Ave',Boulevard:'Blvd',Drive:'Dr',Court:'Ct',Lane:'Ln',Place:'Pl',Road:'Rd',Terrace:'Ter',Circle:'Cir',Parkway:'Pkwy',Highway:'Hwy',Trail:'Trl',Square:'Sq'};
+function cleanAddress(a){
+ let road=a.road||'';
+ Object.entries(DIR_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
+ Object.entries(SUF_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
+ const line1=[a.house_number,road].filter(Boolean).join(' ');
+ const city=a.city||a.town||a.village||a.hamlet||'';
+ const stateZip=[a.state,a.postcode].filter(Boolean).join(' ');
+ const line2=[city,stateZip].filter(Boolean).join(', ');
+ return [line1,line2].filter(Boolean).join(', ');
+}
 P.onAddr=async q=>{
- const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=4&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
- return (await r.json()).map(x=>({label:x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
+ const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=4&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
+ return (await r.json()).map(x=>({label:cleanAddress(x.address)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
 };
 P.onAddrPick=a=>withAuth(()=>newPin('home',a.lat,a.lng,{address:a.label}));
 
