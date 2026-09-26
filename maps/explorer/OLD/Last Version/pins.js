@@ -3,7 +3,7 @@
 'use strict';
 const P=window.PX,{map,esc,usd}=P;
 const sb=supabase.createClient('https://qstztxydqhuahgivpztx.supabase.co','sb_publishable_5MfonGtWBM7R3rgYtEDdkg_TnUOeWJx');
-const KINDS={observation:{id:'observations',one:'Observation',label:'Observations',color:'#8e4ec6'},explore:{id:'explore',one:'Explore',label:'Explore',color:'#e8833a'},home:{id:'homes',one:'Home',label:'Homes',color:'#1f9d55'}};
+const KINDS={observation:{id:'observations',one:'Observation',label:'Observations',color:'#8e4ec6'},explore:{id:'explore',one:'Explore',label:'Explore',color:'#d99a00'},home:{id:'homes',one:'Home',label:'Homes',color:'#1f9d55'}};
 const rows=new Map(),marks=new Map(),groups={};
 let user=null,started=false,tmp=null;
 
@@ -89,7 +89,6 @@ async function bindNeighborhoodStars(el){
  });
 }
 PX.onCardRendered=()=>{
- P.body.querySelectorAll('.note').forEach(el=>{el.onclick=()=>el.classList.toggle('collapsed');});
  P.body.querySelectorAll('.stars').forEach(el=>{
   if(el.dataset.kind==='home'){
    revealStars(el,+el.dataset.value||0);
@@ -123,10 +122,9 @@ function card(r){
  const hoodTxt=hood?`<span class="nb-hood">${esc(hood.Name)}</span>`:'N/A';
  const cityTxt=cityHit?`<span class="nb-city">${esc(cityHit.NAME)}</span>`:'N/A';
  const nbLine=(hood||cityHit)?`${hoodTxt} · ${cityTxt}`:'';
- const photoHTML=(r.photos||[]).length?`<div class="photowrap"><div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${r.photos.length>1?'<button type="button" class="parrow prev" aria-label="Previous photo">&#8249;</button><button type="button" class="parrow next" aria-label="Next photo">&#8250;</button>':''}</div>`:'';
- const noteHTML=r.note?`<div class="note collapsed">${esc(r.note)}</div>`:'';
  return `<div class="sec"><h2${home?' class="addr"':''}>${esc(t)}</h2>${nbLine?`<div class="sub">${nbLine}</div>`:''}<div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div></div>
- ${home?`<div class="sec"><div class="price-row"><div class="big">${r.price?usd(r.price):'No price'}</div><div class="stars" data-kind="home" data-id="${r.id}" data-value="${r.rating||0}">${STAR_CELLS}</div></div>${st}${photoHTML}${noteHTML}</div>`:((photoHTML||noteHTML)?`<div class="sec">${photoHTML}${noteHTML}</div>`:'')}
+ ${home?`<div class="sec"><div class="price-row"><div class="big">${r.price?usd(r.price):'No price'}</div><div class="stars" data-kind="home" data-id="${r.id}" data-value="${r.rating||0}">${STAR_CELLS}</div></div>${st}</div>`:''}
+ ${((r.photos||[]).length||r.note)?`<div class="sec">${(r.photos||[]).length?`<div class="photowrap"><div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${r.photos.length>1?'<button type="button" class="parrow prev" aria-label="Previous photo">&#8249;</button><button type="button" class="parrow next" aria-label="Next photo">&#8250;</button>':''}</div>`:''}${r.note?`<div class="note">${esc(r.note)}</div>`:''}</div>`:''}
  <div class="sec"><div class="pills two">${[`<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}">Directions</a>`,r.link?`<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">${home?'Open listing':'Open link'}</a>`:null].filter(Boolean).join('')}</div>
  <div class="acts">${r.kind!=='observation'?`<button data-act="visit">${home?(r.visited?'Undo visited':'Mark visited'):'Mark visited'}</button>`:''}<button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>`;
 }

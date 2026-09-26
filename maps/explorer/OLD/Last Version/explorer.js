@@ -14,26 +14,15 @@ const mobile=matchMedia('(max-width: 799px)');
 const map=L.map('map',{zoomControl:false,minZoom:8,maxZoom:19,zoomSnap:.5});
 const esriTiles=p=>`https://services.arcgisonline.com/ArcGIS/rest/services/${p}/MapServer/tile/{z}/{y}/{x}`;
 const vec=style=>{try{if(!L.maplibreGL||!window.maplibregl)throw Error('MapLibre not loaded');return L.maplibreGL({style:`https://tiles.openfreemap.org/styles/${style}`,attribution:'<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'});}catch(e){console.error('Vector basemap failed, using Esri tiles:',e);return L.tileLayer(esriTiles('World_Street_Map'),{maxNativeZoom:16,maxZoom:19,attribution:'Tiles &copy; Esri'});}};
-const noLabels=gl=>{
- const hideLabels=()=>{
-  const m=gl.getMaplibreMap&&gl.getMaplibreMap();if(!m)return;
-  const strip=()=>{try{m.getStyle().layers.forEach(l=>{if(l.type==='symbol')m.setLayoutProperty(l.id,'visibility','none');});}catch(e){}};
-  m.isStyleLoaded()?strip():m.once('load',strip);
-  m.on('styledata',strip);
- };
- setTimeout(hideLabels,0);
- return gl;
-};
 const BASES={
- soft:()=>vec('liberty'),
- light:()=>noLabels(vec('positron'))
+ soft:()=>vec('liberty'),light:()=>vec('positron'),dark:()=>vec('dark'),
+ sat:()=>L.layerGroup([L.tileLayer(esriTiles('World_Imagery'),{maxNativeZoom:19,maxZoom:19,attribution:'Imagery &copy; Esri'}),L.tileLayer(esriTiles('Reference/World_Boundaries_and_Places'),{maxNativeZoom:17,maxZoom:19})])
 };
 let base,baseId;const baseBtns={};
 const setBase=id=>{
  if(base)map.removeLayer(base);
  baseId=id;base=BASES[id]();base.addTo(map);
  map.getContainer().classList.toggle('soft',id==='soft');
- map.getContainer().classList.toggle('light-base',id==='light');
  try{localStorage.setItem('pdxBase',id);}catch(e){}
  Object.entries(baseBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',String(k===id)));
 };
@@ -44,9 +33,9 @@ if(window.visualViewport)visualViewport.addEventListener('resize',()=>map.invali
 new ResizeObserver(()=>map.invalidateSize()).observe($('#map'));
 
 const specs=[
- {id:'neighborhoods',label:'Neighborhoods',color:'#2b7de9',g:'a'},
- {id:'census',label:'Census tracts',color:'#0f7b5f',g:'a'},
- {id:'cities',label:'Cities',color:'#e8833a',g:'a'},
+ {id:'neighborhoods',label:'Neighborhoods',color:'#b15daa',g:'a'},
+ {id:'census',label:'Census tracts',color:'#0d9488',g:'a'},
+ {id:'cities',label:'Cities',color:'#5b5bd6',g:'a'},
  {id:'grocery',label:'Groceries',color:'#2b7de9',g:'p'},
  {id:'restaurants',label:'Food',color:'#e5484d',g:'p'}];
 const groups={},chips={},all=[];let selected=null,census=null,neighborhoodsLayer=null,citiesLayer=null;
@@ -80,12 +69,12 @@ const mkRow=(s,i)=>{
 specs.forEach(mkRow);
 map.createPane('p-hl').style.zIndex=440;
 bmenu.insertAdjacentHTML('beforeend','<h3>Basemap</h3>');
-[['light','Light'],['soft','Standard']].forEach(([id,l])=>{
+[['soft','Standard'],['light','Light'],['dark','Dark'],['sat','Satellite']].forEach(([id,l])=>{
  const b=document.createElement('button');b.className='lrow';b.style.setProperty('--c','#8a9a94');b.setAttribute('aria-pressed','false');b.innerHTML=`<i></i>${l}<em></em>`;
  b.onclick=()=>{setBase(id);closeMenu();};baseBtns[id]=b;bmenu.appendChild(b);
 });
 let savedBase;try{savedBase=localStorage.getItem('pdxBase');}catch(e){}
-setBase(BASES[savedBase]?savedBase:'light');
+setBase(BASES[savedBase]?savedBase:dark?'dark':'soft');
 function toggle(id,on){
  const s=specs.find(x=>x.id===id),g=groups[id];if(!g)return;
  on=on??!map.hasLayer(g);
@@ -186,7 +175,7 @@ function pick(layer,id,html,ll){
  const z=Math.max(map.getZoom(),15),shift=mobile.matches?[0,sheet.offsetHeight/2]:[-198,0];
  map.flyTo(map.unproject(map.project(ll,z).add(shift),z),z,{duration:.6});
 }
-const styleOf=id=>{const c=specs.find(s=>s.id===id).color;return {color:c,weight:1.5,opacity:.4,fillColor:c,fillOpacity:.25};};
+const styleOf=id=>{const c=specs.find(s=>s.id===id).color;return {color:c,weight:id==='cities'?2.4:1.9,opacity:.95,fillColor:c,fillOpacity:.12};};
 function build(s,data,hist){
  const pane='p-'+s.id,items=[];let g;
  if(s.g==='a'){
