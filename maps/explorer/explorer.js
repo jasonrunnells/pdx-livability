@@ -33,8 +33,8 @@ if(window.visualViewport)visualViewport.addEventListener('resize',()=>map.invali
 new ResizeObserver(()=>map.invalidateSize()).observe($('#map'));
 
 const specs=[
- {id:'neighborhoods',label:'Neighborhoods',color:'#0f7b5f',g:'a'},
- {id:'census',label:'Census tracts',color:'#e8833a',g:'a'},
+ {id:'neighborhoods',label:'Neighborhoods',color:'#b15daa',g:'a'},
+ {id:'census',label:'Census tracts',color:'#0d9488',g:'a'},
  {id:'cities',label:'Cities',color:'#5b5bd6',g:'a'},
  {id:'grocery',label:'Groceries',color:'#2b7de9',g:'p'},
  {id:'restaurants',label:'Food',color:'#e5484d',g:'p'}];
@@ -159,14 +159,19 @@ function highlightOnly(ll,color){
  hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color,weight:3,fillColor:color,fillOpacity:.2,interactive:false}).addTo(map);
  selected={id:'_ext',reset(){if(hl)map.removeLayer(hl);hl=null;}};
 }
+function clearIfLayer(layer){if(selected&&selected.layer===layer){selected.reset();selected=null;}}
 function pick(layer,id,html,ll){
  PX.onClose&&PX.onClose();
  if(selected)selected.reset();
  const poly=['neighborhoods','cities','census'].includes(id);
  if(poly){layer.setStyle({weight:3.5,fillOpacity:.28,opacity:1});layer.bringToFront();selected={id,reset:()=>layer.setStyle(styleOf(id))};}
- else{const c=layer.hc||'#0f7b5f';hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color:c,weight:3,fillColor:c,fillOpacity:.2,interactive:false}).addTo(map);selected={id,reset(){if(hl)map.removeLayer(hl);hl=null;}};}
+ else{const c=layer.hc||'#0f7b5f';hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color:c,weight:3,fillColor:c,fillOpacity:.2,interactive:false}).addTo(map);selected={id,layer,reset(){if(hl)map.removeLayer(hl);hl=null;}};}
  openSheet(html);
  if(poly){if(mobile.matches)map.panTo(ll,{animate:true});return;}
+ const size=map.getSize(),pt=map.latLngToContainerPoint(ll);
+ const nearEdge=pt.x<24||pt.y<24||pt.x>size.x-24||pt.y>size.y-24;
+ const covered=mobile.matches?pt.y>size.y-sheet.offsetHeight-24:pt.x<400;
+ if(!nearEdge&&!covered)return; /* already clearly visible — leave the map alone (moving it would collapse a spiderfied cluster) */
  const z=Math.max(map.getZoom(),15),shift=mobile.matches?[0,sheet.offsetHeight/2]:[-198,0];
  map.flyTo(map.unproject(map.project(ll,z).add(shift),z),z,{duration:.6});
 }
@@ -260,7 +265,7 @@ $('.locate').onclick=()=>{
   return ll;};
  navigator.geolocation.getCurrentPosition(p=>{map.setView(go(p),15);if(!watching){watching=true;navigator.geolocation.watchPosition(go,()=>{},{enableHighAccuracy:true});}},()=>toast('Allow location access to see where you are'),{enableHighAccuracy:true,timeout:15000});
 };
-Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,highlightOnly,hoodAt,cityAt,cityAt,
+Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,highlightOnly,hoodAt,cityAt,clearIfLayer,cityAt,
  toast:t=>toast(t,5000),
  register:(sp,g)=>{specs.push(sp);mkRow(specs.length-1===0?sp:sp,specs.length-1);groups[sp.id]=g;chips[sp.id].disabled=false;},
  pinBtn:$('.pin')});

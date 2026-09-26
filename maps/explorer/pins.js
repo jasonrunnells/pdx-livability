@@ -11,6 +11,7 @@ let user=null,started=false,tmp=null;
 Object.entries(KINDS).forEach(([kind,k])=>{
  const g=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:c=>{const n=c.getChildCount(),z=n<10?38:n<50?46:54;return L.divIcon({className:'',html:`<div class="cl" style="background:${k.color}">${n}</div>`,iconSize:[z,z]});}});
  g.labels=()=>{if(!user)start().then(ok=>ok||signIn());};
+ g.on('unspiderfied',e=>e.markers.forEach(m=>P.clearIfLayer(m)));
  groups[kind]=g;P.register({id:k.id,label:k.label,color:k.color,g:'p'},g);
 });
 const show=kind=>P.toggle(KINDS[kind].id,true);
@@ -118,7 +119,9 @@ function card(r){
  const st=home?`<div class="grid three">${stat('Bed',r.beds??'–','sm')}${stat('Bath',r.baths??'–','sm')}${stat('Sq ft',r.sqft?r.sqft.toLocaleString():'–','sm')}</div>`:'';
  const hood=home?P.hoodAt({lat:r.lat,lng:r.lng}):null;
  const cityHit=home?P.cityAt({lat:r.lat,lng:r.lng}):null;
- const nbLine=(hood||cityHit)?`Neighborhood: <span class="nb">${hood?esc(hood.Name):'N/A'}</span> · City: <span class="nb">${cityHit?esc(cityHit.NAME):'N/A'}</span>`:'';
+ const hoodTxt=hood?`<span class="nb-hood">${esc(hood.Name)}</span>`:'N/A';
+ const cityTxt=cityHit?`<span class="nb-city">${esc(cityHit.NAME)}</span>`:'N/A';
+ const nbLine=(hood||cityHit)?`${hoodTxt} · ${cityTxt}`:'';
  return `<div class="sec"><h2${home?' class="addr"':''}>${esc(t)}</h2>${nbLine?`<div class="sub">${nbLine}</div>`:''}<div class="sub">${k.one}${r.visited&&home?' · Visited':''} · ${esc(who)}</div></div>
  ${home?`<div class="sec"><div class="price-row"><div class="big">${r.price?usd(r.price):'No price'}</div><div class="stars" data-kind="home" data-id="${r.id}" data-value="${r.rating||0}">${STAR_CELLS}</div></div>${st}</div>`:''}
  ${((r.photos||[]).length||r.note)?`<div class="sec">${(r.photos||[]).length?`<div class="photowrap"><div class="photos">${r.photos.map(u=>`<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${r.photos.length>1?'<button type="button" class="parrow prev" aria-label="Previous photo">&#8249;</button><button type="button" class="parrow next" aria-label="Next photo">&#8250;</button>':''}</div>`:''}${r.note?`<div class="note">${esc(r.note)}</div>`:''}</div>`:''}
