@@ -22,7 +22,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--c);color:#fff}
 .chip[aria-pressed=true] i{background:#fff}
 .chip:disabled{opacity:.5}
-.dock{position:fixed;z-index:1000;right:12px;bottom:calc(28px + var(--safe));display:flex;gap:10px;transition:bottom .3s}
+.dock{position:fixed;z-index:1000;right:12px;bottom:calc(14px + var(--safe));display:flex;gap:10px;transition:bottom .3s}
 .fab{position:relative;width:48px;height:48px;display:grid;place-items:center;border:1px solid rgba(19,32,27,.08);border-radius:50%;background:#fff;color:var(--acc);box-shadow:0 2px 8px rgba(10,30,22,.28)}
 .fab[aria-expanded=true]{background:var(--acc);color:var(--bg)}
 .menu.bmenu{position:absolute;right:0;bottom:calc(100% + 10px);margin:0;width:200px;transform-origin:bottom right}
