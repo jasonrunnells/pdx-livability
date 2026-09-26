@@ -1,11 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
 :root{--bg:#fff;--bg2:#f2f5f4;--ink:#13201b;--mute:#6b7a74;--line:rgba(19,32,27,.1);--acc:#0f7b5f;--acc2:#2b7de9;--city:#e8833a;--hood:#2b7de9;--up:#0f7b5f;--down:#d64545;--shadow:0 6px 24px rgba(10,30,22,.16);--f:Figtree,system-ui,sans-serif;--safe:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root{--bg:#1b2320;--bg2:#252f2b;--ink:#eef3f1;--mute:#93a49d;--line:rgba(255,255,255,.12);--acc:#3ecf9f;--acc2:#5b9eff;--city:#f2a35f;--hood:#5b9eff;--up:#3ecf9f;--down:#ff7a7a;--shadow:0 6px 24px rgba(0,0,0,.5)}}
-html,body{margin:0;height:100%;font-family:var(--f);color:var(--ink);-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:var(--f);color:var(--ink);background:var(--bg2);-webkit-tap-highlight-color:transparent}
 #map{position:fixed;inset:0;background:var(--bg2)}
 .visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 button{font:inherit;color:inherit;cursor:pointer}
-.top{position:fixed;z-index:1000;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 12px 0;pointer-events:none;background:rgba(19,32,27,.16);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4)}
+.top{position:fixed;z-index:1000;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 12px 0;pointer-events:none}
 .top>*{pointer-events:auto}
 .search{display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 4px;background:#fff;border:1px solid rgba(19,32,27,.08);border-radius:24px;box-shadow:0 4px 16px rgba(10,30,22,.22)}
 .map-back-btn,.search .home{display:grid;place-items:center;flex:0 0 40px;height:40px;border-radius:50%;color:var(--acc);text-decoration:none;background:none;border:0}
@@ -81,7 +81,7 @@ details[open] summary:after{content:"–"}
 .leaflet-control-attribution{font-size:10px!important;margin-bottom:0!important}
 .toast{position:fixed;z-index:1200;left:50%;top:120px;transform:translateX(-50%);padding:8px 14px;border-radius:14px;background:var(--ink);color:var(--bg);font:600 13px var(--f)}
 @media(min-width:800px){
-.top{left:16px;top:0;width:380px;padding:16px 0 0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.top{left:16px;top:0;width:380px;padding:16px 0 0}
 .sheet{left:16px;right:auto;top:auto;bottom:16px;width:380px;max-height:calc(100vh - 150px);border-radius:24px;box-shadow:var(--shadow)}
 body.sheet-open .dock{bottom:28px}
 }
