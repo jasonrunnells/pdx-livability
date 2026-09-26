@@ -223,7 +223,16 @@ P.onAddr=async q=>{
  const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=4&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
  return (await r.json()).map(x=>({label:cleanAddress(x.address)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
 };
-P.onAddrPick=a=>withAuth(()=>newPin('home',a.lat,a.lng,{address:a.label}));
+const near=(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)<0.0003;
+function findDupHome(a){
+ for(const r of rows.values())if(r.kind==='home'&&((r.address||'').trim().toLowerCase()===a.label.trim().toLowerCase()||near(r,a)))return r;
+ return null;
+}
+P.onAddrPick=a=>withAuth(()=>{
+ const dup=findDupHome(a);
+ if(dup&&!confirm(`This address may have already been added${dup.created_by_name?` by ${dup.created_by_name}`:''}${dup.created_at?` on ${new Date(dup.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}.\n\nAdd it again anyway?`))return;
+ newPin('home',a.lat,a.lng,{address:a.label});
+});
 
 /* Zoom to a pin when the homepage links here as ?pin=<id> — center only, don't open the card */
 const wantPin=new URLSearchParams(location.search).get('pin');

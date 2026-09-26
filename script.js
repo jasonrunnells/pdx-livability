@@ -118,7 +118,16 @@ addrInput.addEventListener('input',()=>{
       const res=(await r.json()).map(x=>({label:x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
       if(addrInput.value.trim()!==q)return;
       addrResults.innerHTML=res.map((a,i)=>`<button type="button" data-i="${i}">${esc(a.label)}</button>`).join('');
-      addrResults.onclick=e=>{const b=e.target.closest('button');if(!b)return;picked=res[+b.dataset.i];addrInput.value=picked.label;addrResults.innerHTML='';};
+      addrResults.onclick=e=>{
+        const b=e.target.closest('button');if(!b)return;
+        picked=res[+b.dataset.i];addrInput.value=picked.label;addrResults.innerHTML='';
+        const near=(a,c)=>Math.hypot(a.lat-c.lat,a.lng-c.lng)<0.0003;
+        const dup=allRows.find(r=>r.kind==='home'&&((r.address||'').trim().toLowerCase()===picked.label.trim().toLowerCase()||near(r,picked)));
+        if(dup){
+          const who=[dup.created_by_name,dup.created_at?new Date(dup.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):null].filter(Boolean).join(' on ');
+          if(!confirm(`This address may have already been added${who?` by ${who}`:''}.\n\nAdd it again anyway?`)){picked=null;addrInput.value='';}
+        }
+      };
     }catch(e){}
   },500);
 });
