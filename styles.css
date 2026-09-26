@@ -58,12 +58,12 @@ h2{font-family:var(--sans);font-weight:800;font-size:1.6rem;letter-spacing:-.01e
 .navbtn:disabled{opacity:.25;cursor:default}
 .navbtn:not(:disabled):hover{color:var(--acc)}
 
-.gate{max-width:380px;background:var(--paper);border:2px solid var(--ink);border-radius:16px;padding:22px;margin:40px 0}
+.gate{max-width:380px;background:var(--bg);border:2px solid var(--ink);border-radius:16px;padding:22px;margin:40px 0}
 .gate[hidden]{display:none}
 .gate>p{margin:0 0 14px;color:var(--mute)}
 #signin{display:grid;gap:10px}
 #signin input{
-  padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:var(--bg);
+  padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:var(--paper);
   color:var(--ink);font:500 15px var(--sans);width:100%;
 }
 #signin input:focus{outline:2px solid var(--acc);outline-offset:1px}
