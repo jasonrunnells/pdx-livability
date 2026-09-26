@@ -45,7 +45,7 @@ new ResizeObserver(()=>map.invalidateSize()).observe($('#map'));
 
 const specs=[
  {id:'neighborhoods',label:'Neighborhoods',color:'#2b7de9',g:'a'},
- {id:'census',label:'Census tracts',color:'#0f7b5f',g:'a'},
+ {id:'census',label:'Census tracts',color:'#1f9d55',g:'a'},
  {id:'cities',label:'Cities',color:'#e8833a',g:'a'},
  {id:'grocery',label:'Groceries',color:'#2b7de9',g:'p'},
  {id:'restaurants',label:'Food',color:'#e5484d',g:'p'}];
