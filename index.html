@@ -11,9 +11,45 @@
 
 <main>
   <section class="hero">
-    <h1>Portland</h1>
-    <p class="lede">A Portland livability dashboard. See the latest updates and add homes directly to the map.</p>
-    <a class="cta" href="maps/explorer/index.html">Open the map</a>
+    <svg class="hero-dots" viewBox="0 0 420 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <circle cx="330" cy="95" r="95" fill="#2b7de9"/>
+      <circle cx="245" cy="250" r="72" fill="#1f9d55"/>
+      <circle cx="368" cy="270" r="46" fill="#e8833a"/>
+      <circle cx="140" cy="340" r="58" fill="#8e4ec6"/>
+      <circle cx="378" cy="160" r="32" fill="#e5484d"/>
+    </svg>
+    <div class="hero-inner">
+      <h1>Portland</h1>
+      <div class="hero-row">
+        <p class="lede">See the latest updates and add homes directly to the map.</p>
+        <div class="hero-actions">
+          <a class="cta" href="maps/explorer/index.html">Open the map</a>
+          <button class="cta alt" id="addHomeBtn" type="button">Add a home</button>
+        </div>
+      </div>
+
+      <form class="homeform" id="homeForm" hidden>
+        <div class="addr-wrap">
+          <input name="address" placeholder="Address" autocomplete="off" required>
+          <div class="addr-results" id="addrResults"></div>
+        </div>
+        <input name="link" inputmode="url" placeholder="Listing link">
+      <input name="price" inputmode="numeric" placeholder="Price">
+      <div class="row3">
+        <input name="beds" inputmode="decimal" placeholder="Beds">
+        <input name="baths" inputmode="decimal" placeholder="Baths">
+        <input name="sqft" inputmode="numeric" placeholder="Sq ft">
+      </div>
+      <textarea name="note" rows="3" placeholder="Notes"></textarea>
+      <label class="photobtn">Add photos<input type="file" accept="image/*" multiple hidden></label>
+      <div class="thumbs" id="homeThumbs"></div>
+      <p class="err" id="homeErr"></p>
+      <div class="formacts">
+        <button type="button" class="ghost" id="cancelHome">Cancel</button>
+        <button type="submit" id="saveHome" disabled>Save home</button>
+      </div>
+    </form>
+    </div>
   </section>
 
   <div class="gate" id="gate">
@@ -32,8 +68,8 @@
       <div class="block-head">
         <h2>Recent updates</h2>
         <div class="nav" data-for="updatesGrid">
-          <button type="button" class="navbtn prev" aria-label="Scroll left">&#8249;</button>
-          <button type="button" class="navbtn next" aria-label="Scroll right">&#8250;</button>
+          <button type="button" class="navbtn prev" aria-label="Scroll left">&#8592;</button>
+          <button type="button" class="navbtn next" aria-label="Scroll right">&#8594;</button>
         </div>
       </div>
       <div class="row updates" id="updatesGrid"></div>
@@ -42,36 +78,11 @@
     <section class="block">
       <div class="block-head">
         <h2>Homes</h2>
-        <div class="head-right">
-          <div class="nav" data-for="homesGrid">
-            <button type="button" class="navbtn prev" aria-label="Scroll left">&#8249;</button>
-            <button type="button" class="navbtn next" aria-label="Scroll right">&#8250;</button>
-          </div>
-          <button class="add" id="addHomeBtn">Add a home</button>
+        <div class="nav" data-for="homesGrid">
+          <button type="button" class="navbtn prev" aria-label="Scroll left">&#8592;</button>
+          <button type="button" class="navbtn next" aria-label="Scroll right">&#8594;</button>
         </div>
       </div>
-
-      <form class="homeform" id="homeForm" hidden>
-        <div class="addr-wrap">
-          <input name="address" placeholder="Address" autocomplete="off" required>
-          <div class="addr-results" id="addrResults"></div>
-        </div>
-        <input name="link" inputmode="url" placeholder="Listing link">
-        <input name="price" inputmode="numeric" placeholder="Price">
-        <div class="row3">
-          <input name="beds" inputmode="decimal" placeholder="Beds">
-          <input name="baths" inputmode="decimal" placeholder="Baths">
-          <input name="sqft" inputmode="numeric" placeholder="Sq ft">
-        </div>
-        <textarea name="note" rows="3" placeholder="Notes"></textarea>
-        <label class="photobtn">Add photos<input type="file" accept="image/*" multiple hidden></label>
-        <div class="thumbs" id="homeThumbs"></div>
-        <p class="err" id="homeErr"></p>
-        <div class="formacts">
-          <button type="button" class="ghost" id="cancelHome">Cancel</button>
-          <button type="submit" id="saveHome" disabled>Save home</button>
-        </div>
-      </form>
 
       <div class="row homes" id="homesGrid"></div>
     </section>
