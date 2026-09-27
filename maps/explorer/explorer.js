@@ -52,7 +52,7 @@ const specs=[
 const groups={},chips={},all=[];let selected=null,census=null,neighborhoodsLayer=null,citiesLayer=null;
 
 /* DOM */
-document.body.insertAdjacentHTML('beforeend',`<div class="top"><div class="topbar"><div class="search"><span class="home"></span><input type="search" placeholder="Search Portland" aria-label="Search" autocomplete="off"></div><button class="lbtn" aria-label="Map layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button></div><div class="results"></div><div class="menu" hidden></div></div><div class="dock"><div class="menu bmenu" hidden></div><button class="fab pin" aria-label="Drop an observation here"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/></svg></button><button class="fab bbtn" aria-label="Basemap" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></svg></button><button class="fab locate" aria-label="Show my location"><svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/></svg></button></div><section class="sheet" aria-hidden="true"><div class="grab"></div><button class="x" aria-label="Close">&times;</button><div class="body"></div></section>`);
+document.body.insertAdjacentHTML('beforeend',`<div class="top"><div class="topbar"><div class="search"><span class="home"></span><input type="search" placeholder="Search Portland" aria-label="Search" autocomplete="off"><button class="clear" aria-label="Clear search" hidden>&times;</button></div><button class="lbtn" aria-label="Map layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button></div><div class="results"></div><div class="menu" hidden></div></div><div class="dock"><div class="menu bmenu" hidden></div><button class="fab pin" aria-label="Drop an observation here"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/></svg></button><button class="fab bbtn" aria-label="Basemap" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></svg></button><button class="fab locate" aria-label="Show my location"><svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/></svg></button></div><section class="sheet" aria-hidden="true"><div class="grab"></div><button class="x" aria-label="Close">&times;</button><div class="body"></div></section>`);
 const home=$('.map-back-btn');if(home)$('.search .home').replaceWith(home);
 const sheet=$('.sheet'),body=$('.body',sheet),results=$('.results'),input=$('.search input');
 const openSheet=html=>{PX.lock=false;body.innerHTML=html;sheet.scrollTop=0;sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');document.body.classList.add('sheet-open');PX.onCardRendered&&PX.onCardRendered();};
@@ -242,8 +242,10 @@ specs.forEach(s=>{
 
 /* Search */
 let addrRes=[],at;
+const clearBtn=$('.clear');
 input.addEventListener('input',()=>{
  const q=input.value.trim(),ql=q.toLowerCase();clearTimeout(at);
+ clearBtn.hidden=!q;
  const local=ql.length<2?'':searchable.filter(x=>x.n.toLowerCase().includes(ql)).slice(0,6).map(x=>`<button data-i="${searchable.indexOf(x)}">${esc(x.n)}<small>${esc(x.sub)}</small></button>`).join('');
  results.innerHTML=local?`<h3 class="rh">Neighborhoods &amp; places</h3>${local}`:'';
  if(q.length>=6&&/\d/.test(q)&&PX.onAddr)at=setTimeout(async()=>{
@@ -252,6 +254,7 @@ input.addEventListener('input',()=>{
   results.insertAdjacentHTML('beforeend',`<h3 class="rh">Addresses</h3>${addrRes.map((a,i)=>`<button data-a="${i}">${esc(a.label)}<small>Save as Home</small></button>`).join('')}`);
  },600);
 });
+clearBtn.onclick=()=>{input.value='';clearBtn.hidden=true;results.innerHTML='';input.focus();};
 results.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b)return;
  if(b.dataset.a!=null){const a=addrRes[+b.dataset.a];results.innerHTML='';input.blur();PX.onAddrPick(a);return;}

@@ -3,6 +3,7 @@
 const $=(s)=>document.querySelector(s);
 const sb=supabase.createClient('https://qstztxydqhuahgivpztx.supabase.co','sb_publishable_5MfonGtWBM7R3rgYtEDdkg_TnUOeWJx');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const truncate=(s,max)=>{if(s.length<=max)return s;const cut=s.slice(0,max),sp=cut.lastIndexOf(' ');return (sp>0?cut.slice(0,sp):cut).trim()+'…';};
 const usd=v=>v==null?'–':'$'+Math.round(v).toLocaleString();
 const KIND={observation:{label:'Observation',letter:'O',color:'#8e4ec6'},explore:{label:'Explore',letter:'E',color:'#d99a00'},home:{label:'Home',letter:'H',color:'#1f9d55'}};
 const gate=$('#gate'),authed=$('#authed');
@@ -14,25 +15,24 @@ const dateStr=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'nume
 /* Recent updates: every kind, simple card */
 function updateCard(r){
   const k=KIND[r.kind]||{label:r.kind,letter:'?',color:'#888'};
-  const t=r.kind==='home'?(r.address||'Home'):(r.title||(r.note||'').slice(0,44)||k.label);
+  const t=r.kind==='home'?(r.address||'Home'):(r.title||truncate(r.note||'',44)||k.label);
   const who=[r.created_by_name,dateStr(r.created_at)].filter(Boolean).join(', ');
   const photo=(r.photos||[])[0];
-  return `<div class="card">
+  return `<a class="card" style="--dot:${k.color}" href="maps/explorer/index.html?pin=${r.id}">
     <div class="imgwrap">${photo?`<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">`:`<div class="ph" style="color:${k.color}">${k.letter}</div>`}</div>
     <div class="body">
-      <div class="tag" style="--dot:${k.color}"><i></i>${k.label}</div>
+      <div class="tag"><i></i>${k.label}</div>
       <div class="t">${esc(t)}</div>
       <div class="w">${esc(who)}</div>
-      <a class="viewmap" href="maps/explorer/index.html?pin=${r.id}">View on map</a>
     </div>
-  </div>`;
+  </a>`;
 }
 
 /* Homes: full listing card */
 function homeCard(r){
   const specs=[r.beds!=null?`${r.beds} bd`:null,r.baths!=null?`${r.baths} ba`:null,r.sqft?`${r.sqft.toLocaleString()} sqft`:null].filter(Boolean).join(' · ');
   const photo=(r.photos||[])[0];
-  return `<div class="card home-card">
+  return `<a class="card home-card" style="--dot:${KIND.home.color}" href="maps/explorer/index.html?pin=${r.id}">
     <div class="imgwrap">
       ${photo?`<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">`:`<div class="ph" style="color:${KIND.home.color}">H</div>`}
       ${r.visited?'<div class="check" title="Visited">✓</div>':''}
@@ -41,9 +41,8 @@ function homeCard(r){
       <div class="price">${usd(r.price)}</div>
       <div class="addr">${esc(r.address||'')}</div>
       ${specs?`<div class="specs">${specs}</div>`:''}
-      <a class="viewmap" href="maps/explorer/index.html?pin=${r.id}">View on map</a>
     </div>
-  </div>`;
+  </a>`;
 }
 
 function render(rows){
@@ -51,6 +50,7 @@ function render(rows){
   updates.innerHTML=rows.length?rows.slice(0,9).map(updateCard).join(''):'<p class="empty">Nothing logged yet.</p>';
   const h=rows.filter(r=>r.kind==='home').slice(0,9);
   homes.innerHTML=h.length?h.map(homeCard).join(''):'<p class="empty">No homes added yet.</p>';
+  requestAnimationFrame(()=>navUpdaters.forEach(u=>u()));
 }
 
 let allRows=[];
@@ -102,34 +102,32 @@ let picked=null,files=[];
 const resetForm=()=>{homeForm.reset();picked=null;files=[];thumbsEl.innerHTML='';addrResults.innerHTML='';saveBtn.disabled=true;homeErr.textContent='';};
 
 addBtn.onclick=()=>{
+  if(!gate.hidden){gate.scrollIntoView({behavior:'smooth',block:'start'});return;}
   const show=homeForm.hidden;homeForm.hidden=!show;
   if(show){homeForm.scrollIntoView({behavior:'smooth',block:'start'});addrInput.focus();}
 };
 $('#cancelHome').onclick=()=>{homeForm.hidden=true;resetForm();};
 
-const DIR_ABBR={North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'};
-const SUF_ABBR={Street:'St',Avenue:'Ave',Boulevard:'Blvd',Drive:'Dr',Court:'Ct',Lane:'Ln',Place:'Pl',Road:'Rd',Terrace:'Ter',Circle:'Cir',Parkway:'Pkwy',Highway:'Hwy',Trail:'Trl',Square:'Sq'};
-function cleanAddress(a){
-  let road=a.road||'';
-  Object.entries(DIR_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
-  Object.entries(SUF_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
-  const line1=[a.house_number,road].filter(Boolean).join(' ');
-  const city=a.city||a.town||a.village||a.hamlet||'';
-  const stateZip=[a.state,a.postcode].filter(Boolean).join(' ');
-  const line2=[city,stateZip].filter(Boolean).join(', ');
-  return [line1,line2].filter(Boolean).join(', ');
-}
 let at;
 addrInput.addEventListener('input',()=>{
   picked=null;const q=addrInput.value.trim();clearTimeout(at);addrResults.innerHTML='';
   if(q.length<6)return;
   at=setTimeout(async()=>{
     try{
-      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
-      const res=(await r.json()).map(x=>({label:cleanAddress(x.address)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
+      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
+      const res=(await r.json()).map(x=>({label:x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
       if(addrInput.value.trim()!==q)return;
       addrResults.innerHTML=res.map((a,i)=>`<button type="button" data-i="${i}">${esc(a.label)}</button>`).join('');
-      addrResults.onclick=e=>{const b=e.target.closest('button');if(!b)return;picked=res[+b.dataset.i];addrInput.value=picked.label;addrResults.innerHTML='';};
+      addrResults.onclick=e=>{
+        const b=e.target.closest('button');if(!b)return;
+        picked=res[+b.dataset.i];addrInput.value=picked.label;addrResults.innerHTML='';
+        const near=(a,c)=>Math.hypot(a.lat-c.lat,a.lng-c.lng)<0.0003;
+        const dup=allRows.find(r=>r.kind==='home'&&((r.address||'').trim().toLowerCase()===picked.label.trim().toLowerCase()||near(r,picked)));
+        if(dup){
+          const who=[dup.created_by_name,dup.created_at?new Date(dup.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):null].filter(Boolean).join(' on ');
+          if(!confirm(`This address may have already been added${who?` by ${who}`:''}.\n\nAdd it again anyway?`)){picked=null;addrInput.value='';}
+        }
+      };
     }catch(e){}
   },500);
 });
@@ -157,6 +155,7 @@ homeForm.addEventListener('submit', async ev=>{
 });
 
 /* Row arrows: scroll one card-width per click, disable at the ends */
+const navUpdaters=[];
 document.querySelectorAll('.nav').forEach(nav=>{
   const row=document.getElementById(nav.dataset.for),prev=nav.querySelector('.prev'),next=nav.querySelector('.next');
   const step=()=>(row.querySelector('.card')?.getBoundingClientRect().width||228)+16;
@@ -164,7 +163,8 @@ document.querySelectorAll('.nav').forEach(nav=>{
   prev.onclick=()=>row.scrollBy({left:-step(),behavior:'smooth'});
   next.onclick=()=>row.scrollBy({left:step(),behavior:'smooth'});
   row.addEventListener('scroll',update);
-  new MutationObserver(update).observe(row,{childList:true});
+  navUpdaters.push(update);
   update();
 });
+addEventListener('resize',()=>navUpdaters.forEach(u=>u()));
 })();

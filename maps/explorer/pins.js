@@ -204,7 +204,6 @@ el.addEventListener('pointerdown',e=>{
 ['pointerup','pointercancel','pointermove'].forEach(t=>el.addEventListener(t,e=>{if(t!=='pointermove'||Math.hypot(e.clientX-sx,e.clientY-sy)>10)clearTimeout(lp);}));
 map.on('contextmenu',e=>addExplore(e.latlng));
 el.addEventListener('contextmenu',e=>e.preventDefault());
-let hinted=false;map.on('click',()=>{if(!hinted&&user){hinted=true;P.toast('Tip: press and hold anywhere to save a place to explore');}});
 
 /* Address lookup (OpenStreetMap, free): build a clean "123 SW Main St, Portland, OR 97225" line */
 const DIR_ABBR={North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'};
