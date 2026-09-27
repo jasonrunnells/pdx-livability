@@ -154,7 +154,7 @@ function form(o){
  const k=o.kind,H=k==='home',pics=[...(o.photos||[])],files=[];
  const v=(x,n)=>esc(x??'');
  P.openSheet(`<h2>${o.id?'Edit':'New'} ${KINDS[k].one.toLowerCase()}</h2><form class="pf">
-  ${H?`<input name="address" placeholder="Address" value="${v(o.address)}">`:`<input name="title" placeholder="${k==='explore'?'Place name':'Title (optional)'}" value="${v(o.title)}">`}
+  ${H?`<input name="addr-q" placeholder="Address" value="${v(o.address)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`:`<input name="title" placeholder="${k==='explore'?'Place name':'Title (optional)'}" value="${v(o.title)}">`}
   ${k!=='observation'?`<input name="link" inputmode="url" placeholder="${H?'Listing link':'Link (optional)'}" value="${v(o.link)}">`:''}
   ${H?`<input name="price" inputmode="numeric" placeholder="Price" value="${v(o.price)}"><div class="pr"><input name="beds" inputmode="decimal" placeholder="Beds" value="${v(o.beds)}"><input name="baths" inputmode="decimal" placeholder="Baths" value="${v(o.baths)}"><input name="sqft" inputmode="numeric" placeholder="Sq ft" value="${v(o.sqft)}"></div>`:''}
   <textarea name="note" rows="3" placeholder="Notes">${v(o.note)}</textarea>
@@ -163,7 +163,7 @@ function form(o){
  P.lock=true;P.body.onclick=null;
  const f=P.body.querySelector('form'),btn=f.querySelector('.btn'),th=f.querySelector('.pth'),err=f.querySelector('.perr');
  const gv=n=>f.elements[n]?.value.trim()||'';
- const ok=()=>{btn.disabled=!(gv('title')||gv('note')||gv('address')||pics.length||files.length);};
+ const ok=()=>{btn.disabled=!(gv('title')||gv('note')||gv('addr-q')||pics.length||files.length);};
  const thumbs=()=>{th.innerHTML=[...pics.map((u,i)=>`<img data-p="${i}" src="${esc(u)}">`),...files.map((x,i)=>`<img data-f="${i}" src="${URL.createObjectURL(x)}">`)].join('');ok();};
  th.onclick=e=>{const i=e.target;if(i.dataset.p!=null)pics.splice(+i.dataset.p,1);else if(i.dataset.f!=null)files.splice(+i.dataset.f,1);else return;thumbs();};
  f.querySelector('input[type=file]').onchange=e=>{files.push(...e.target.files);e.target.value='';thumbs();};
@@ -173,7 +173,7 @@ function form(o){
   try{
    const urls=[];for(const x of files)urls.push(await upload(x));
    const val=n=>gv(n)||null;
-   const rec={kind:k,lat:o.lat,lng:o.lng,title:val('title'),note:val('note'),address:H?val('address'):null,link:norm(val('link')),price:H?num(gv('price')):null,beds:H?num(gv('beds')):null,baths:H?num(gv('baths')):null,sqft:H?num(gv('sqft')):null,photos:[...pics,...urls]};
+   const rec={kind:k,lat:o.lat,lng:o.lng,title:val('title'),note:val('note'),address:H?val('addr-q'):null,link:norm(val('link')),price:H?num(gv('price')):null,beds:H?num(gv('beds')):null,baths:H?num(gv('baths')):null,sqft:H?num(gv('sqft')):null,photos:[...pics,...urls]};
    const name=user.user_metadata?.name||null;
    const q=o.id?sb.from('places').update(rec).eq('id',o.id):sb.from('places').insert({...rec,created_by_name:name});
    const {data,error}=await q.select().single();if(error)throw error;
@@ -208,19 +208,23 @@ el.addEventListener('contextmenu',e=>e.preventDefault());
 /* Address lookup (OpenStreetMap, free): build a clean "123 SW Main St, Portland, OR 97225" line */
 const DIR_ABBR={North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'};
 const SUF_ABBR={Street:'St',Avenue:'Ave',Boulevard:'Blvd',Drive:'Dr',Court:'Ct',Lane:'Ln',Place:'Pl',Road:'Rd',Terrace:'Ter',Circle:'Cir',Parkway:'Pkwy',Highway:'Hwy',Trail:'Trl',Square:'Sq'};
-function cleanAddress(a){
+const STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC'};
+function cleanAddress(a,typedNum){
  let road=a.road||'';
  Object.entries(DIR_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
  Object.entries(SUF_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
- const line1=[a.house_number,road].filter(Boolean).join(' ');
+ const houseNum=a.house_number||typedNum||'';
+ const line1=[houseNum,road].filter(Boolean).join(' ');
  const city=a.city||a.town||a.village||a.hamlet||'';
- const stateZip=[a.state,a.postcode].filter(Boolean).join(' ');
+ const state=STATE_ABBR[a.state]||a.state||'';
+ const stateZip=[state,a.postcode].filter(Boolean).join(' ');
  const line2=[city,stateZip].filter(Boolean).join(', ');
  return [line1,line2].filter(Boolean).join(', ');
 }
 P.onAddr=async q=>{
  const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=4&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
- return (await r.json()).map(x=>({label:cleanAddress(x.address)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
+ const typedNum=(q.match(/^\s*(\d+[a-zA-Z]?)/)||[])[1];
+ return (await r.json()).map(x=>({label:cleanAddress(x.address,typedNum)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
 };
 const near=(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)<0.0003;
 function findDupHome(a){

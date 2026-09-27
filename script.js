@@ -97,7 +97,7 @@ async function upload(file){
   if(error)throw error;return sb.storage.from('photos').getPublicUrl(path).data.publicUrl;
 }
 
-const homeForm=$('#homeForm'),addBtn=$('#addHomeBtn'),addrInput=homeForm.address,addrResults=$('#addrResults'),thumbsEl=$('#homeThumbs'),saveBtn=$('#saveHome'),homeErr=$('#homeErr');
+const homeForm=$('#homeForm'),addBtn=$('#addHomeBtn'),addrInput=homeForm['addr-q'],addrResults=$('#addrResults'),thumbsEl=$('#homeThumbs'),saveBtn=$('#saveHome'),homeErr=$('#homeErr');
 let picked=null,files=[];
 const resetForm=()=>{homeForm.reset();picked=null;files=[];thumbsEl.innerHTML='';addrResults.innerHTML='';saveBtn.disabled=true;homeErr.textContent='';};
 
@@ -108,14 +108,30 @@ addBtn.onclick=()=>{
 };
 $('#cancelHome').onclick=()=>{homeForm.hidden=true;resetForm();};
 
+const DIR_ABBR={North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'};
+const SUF_ABBR={Street:'St',Avenue:'Ave',Boulevard:'Blvd',Drive:'Dr',Court:'Ct',Lane:'Ln',Place:'Pl',Road:'Rd',Terrace:'Ter',Circle:'Cir',Parkway:'Pkwy',Highway:'Hwy',Trail:'Trl',Square:'Sq'};
+const STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC'};
+function cleanAddress(a,typedNum){
+  let road=a.road||'';
+  Object.entries(DIR_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
+  Object.entries(SUF_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
+  const houseNum=a.house_number||typedNum||'';
+  const line1=[houseNum,road].filter(Boolean).join(' ');
+  const city=a.city||a.town||a.village||a.hamlet||'';
+  const state=STATE_ABBR[a.state]||a.state||'';
+  const stateZip=[state,a.postcode].filter(Boolean).join(' ');
+  const line2=[city,stateZip].filter(Boolean).join(', ');
+  return [line1,line2].filter(Boolean).join(', ');
+}
 let at;
 addrInput.addEventListener('input',()=>{
   picked=null;const q=addrInput.value.trim();clearTimeout(at);addrResults.innerHTML='';
   if(q.length<6)return;
   at=setTimeout(async()=>{
     try{
-      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
-      const res=(await r.json()).map(x=>({label:x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
+      const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
+      const typedNum=(q.match(/^\s*(\d+[a-zA-Z]?)/)||[])[1];
+      const res=(await r.json()).map(x=>({label:cleanAddress(x.address,typedNum)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
       if(addrInput.value.trim()!==q)return;
       addrResults.innerHTML=res.map((a,i)=>`<button type="button" data-i="${i}">${esc(a.label)}</button>`).join('');
       addrResults.onclick=e=>{
@@ -131,6 +147,7 @@ addrInput.addEventListener('input',()=>{
     }catch(e){}
   },500);
 });
+addrInput.addEventListener('blur',()=>{setTimeout(()=>{addrResults.innerHTML='';},150);});
 
 const thumbs=()=>{thumbsEl.innerHTML=files.map((x,i)=>`<img data-i="${i}" src="${URL.createObjectURL(x)}">`).join('');saveBtn.disabled=!picked;};
 thumbsEl.onclick=e=>{const i=e.target.dataset.i;if(i==null)return;files.splice(+i,1);thumbs();};
