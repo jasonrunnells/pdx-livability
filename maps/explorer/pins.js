@@ -1,4 +1,4 @@
-/* Shared pins: Observations (GPS), Explore (press-and-hold), Homes (address search). */
+/* Shared pins: Observations (GPS), Explore (press-and-hold), Homes (added from the homepage; editable here). */
 (() => {
 'use strict';
 const P=window.PX,{map,esc,usd}=P;
@@ -204,38 +204,6 @@ el.addEventListener('pointerdown',e=>{
 ['pointerup','pointercancel','pointermove'].forEach(t=>el.addEventListener(t,e=>{if(t!=='pointermove'||Math.hypot(e.clientX-sx,e.clientY-sy)>10)clearTimeout(lp);}));
 map.on('contextmenu',e=>addExplore(e.latlng));
 el.addEventListener('contextmenu',e=>e.preventDefault());
-
-/* Address lookup (OpenStreetMap, free): build a clean "123 SW Main St, Portland, OR 97225" line */
-const DIR_ABBR={North:'N',South:'S',East:'E',West:'W',Northeast:'NE',Northwest:'NW',Southeast:'SE',Southwest:'SW'};
-const SUF_ABBR={Street:'St',Avenue:'Ave',Boulevard:'Blvd',Drive:'Dr',Court:'Ct',Lane:'Ln',Place:'Pl',Road:'Rd',Terrace:'Ter',Circle:'Cir',Parkway:'Pkwy',Highway:'Hwy',Trail:'Trl',Square:'Sq'};
-const STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC'};
-function cleanAddress(a,typedNum){
- let road=a.road||'';
- Object.entries(DIR_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
- Object.entries(SUF_ABBR).forEach(([k,v])=>{road=road.replace(new RegExp(`\\b${k}\\b`,'g'),v);});
- const houseNum=a.house_number||typedNum||'';
- const line1=[houseNum,road].filter(Boolean).join(' ');
- const city=a.city||a.town||a.village||a.hamlet||'';
- const state=STATE_ABBR[a.state]||a.state||'';
- const stateZip=[state,a.postcode].filter(Boolean).join(' ');
- const line2=[city,stateZip].filter(Boolean).join(', ');
- return [line1,line2].filter(Boolean).join(', ');
-}
-P.onAddr=async q=>{
- const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=4&countrycodes=us&viewbox=-123.6,46.0,-121.6,44.9&q='+encodeURIComponent(q));
- const typedNum=(q.match(/^\s*(\d+[a-zA-Z]?)/)||[])[1];
- return (await r.json()).map(x=>({label:cleanAddress(x.address,typedNum)||x.display_name.split(', ').slice(0,4).join(', '),lat:+x.lat,lng:+x.lon}));
-};
-const near=(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)<0.0003;
-function findDupHome(a){
- for(const r of rows.values())if(r.kind==='home'&&((r.address||'').trim().toLowerCase()===a.label.trim().toLowerCase()||near(r,a)))return r;
- return null;
-}
-P.onAddrPick=a=>withAuth(()=>{
- const dup=findDupHome(a);
- if(dup&&!confirm(`This address may have already been added${dup.created_by_name?` by ${dup.created_by_name}`:''}${dup.created_at?` on ${new Date(dup.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`:''}.\n\nAdd it again anyway?`))return;
- newPin('home',a.lat,a.lng,{address:a.label});
-});
 
 /* Zoom to a pin when the homepage links here as ?pin=<id> — center only, don't open the card */
 const wantPin=new URLSearchParams(location.search).get('pin');

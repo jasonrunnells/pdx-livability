@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDX Livability</title>
-<meta name="theme-color" content="#0f7b5f">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f2f0e9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141a17" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -34,11 +36,12 @@
       </div>
 
       <form class="homeform" id="homeForm" hidden>
+        <input name="link" inputmode="url" placeholder="Zillow link (fills in the address)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         <div class="addr-wrap">
-          <input name="addr-q" placeholder="Address" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required>
+          <input name="addr-q" placeholder="Address" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
           <div class="addr-results" id="addrResults"></div>
         </div>
-        <input name="link" inputmode="url" placeholder="Listing link">
+        <p class="hint" id="addrHint"></p>
       <input name="price" inputmode="numeric" placeholder="Price">
       <div class="row3">
         <input name="beds" inputmode="decimal" placeholder="Beds">
@@ -57,7 +60,7 @@
     </div>
   </section>
 
-  <div class="gate" id="gate">
+  <div class="gate" id="gate" hidden>
     <p>Sign in to see recent updates and add homes.</p>
     <form id="signin">
       <input type="email" name="email" placeholder="Email" autocomplete="username" required>
