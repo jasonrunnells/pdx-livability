@@ -1,282 +1,347 @@
-/* Portland Explorer: mobile-first livability map. */
+/* ==========================================================================
+   Portland Explorer — basemap
+   Vector tiles (PMTiles) drawn with MapLibre GL.
+   Tiles live in ./tiles and are built from the GeoJSON in ./data.
+   ========================================================================== */
 (() => {
-'use strict';
-const $=(s,r=document)=>r.querySelector(s);
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const num=v=>v!=null&&v!==''&&Number.isFinite(+v)?+v:null;
-const usd=v=>num(v)==null?'–':'$'+Math.round(v).toLocaleString();
-const pct=v=>num(v)==null?'–':Math.round(v)+'%';
-const short=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v/1e3)+'K';
-const title=v=>String(v||'').toLowerCase().replace(/\b\p{L}/gu,c=>c.toUpperCase());
-const darkMQ=matchMedia('(prefers-color-scheme: dark)');let dark=darkMQ.matches;
-const mobile=matchMedia('(max-width: 799px)');
+  'use strict';
 
-const map=L.map('map',{zoomControl:false,minZoom:8,maxZoom:19,zoomSnap:.5});
-const esriTiles=p=>`https://services.arcgisonline.com/ArcGIS/rest/services/${p}/MapServer/tile/{z}/{y}/{x}`;
-const vec=style=>{try{if(!L.maplibreGL||!window.maplibregl)throw Error('MapLibre not loaded');return L.maplibreGL({style:`https://tiles.openfreemap.org/styles/${style}`,attribution:'<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'});}catch(e){console.error('Vector basemap failed, using Esri tiles:',e);return L.tileLayer(esriTiles('World_Street_Map'),{maxNativeZoom:16,maxZoom:19,attribution:'Tiles &copy; Esri'});}};
-const noLabels=gl=>{
- const hideLabels=()=>{
-  const m=gl.getMaplibreMap&&gl.getMaplibreMap();if(!m)return;
-  const strip=()=>{try{m.getStyle().layers.forEach(l=>{if(l.type==='symbol')m.setLayoutProperty(l.id,'visibility','none');});}catch(e){}};
-  m.isStyleLoaded()?strip():m.once('load',strip);
-  m.on('styledata',strip);
- };
- setTimeout(hideLabels,0);
- return gl;
-};
-const BASES={
- soft:()=>vec(dark?'fiord':'liberty'),
- light:()=>noLabels(vec(dark?'dark':'positron'))
-};
-let base,baseId;const baseBtns={};
-const setBase=id=>{
- if(base)map.removeLayer(base);
- baseId=id;base=BASES[id]();base.addTo(map);
- map.getContainer().classList.toggle('soft',id==='soft');
- map.getContainer().classList.toggle('light-base',id==='light');
- try{localStorage.setItem('pdxBase',id);}catch(e){}
- Object.entries(baseBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',String(k===id)));
-};
-map.setView([45.52,-122.67],11);
-addEventListener('resize',()=>map.invalidateSize());
-addEventListener('orientationchange',()=>setTimeout(()=>map.invalidateSize(),300));
-if(window.visualViewport)visualViewport.addEventListener('resize',()=>map.invalidateSize());
-new ResizeObserver(()=>map.invalidateSize()).observe($('#map'));
+  /* ---------- Settings ---------- */
+  const TILES = {
+    base:      new URL('tiles/base.pmtiles', location.href).href,
+    buildings: new URL('tiles/buildings.pmtiles', location.href).href,
+    lots:      new URL('tiles/lots.pmtiles', location.href).href,
+  };
+  // Free, no-key elevation tiles (AWS Open Data "Terrain Tiles") used for hillshade.
+  const TERRAIN = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+  const GLYPHS = 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf';
+  const FONT = {
+    regular:  ['Open Sans Regular'],
+    semibold: ['Open Sans Semibold'],
+    italic:   ['Open Sans Italic'],
+  };
 
-const specs=[
- {id:'neighborhoods',label:'Neighborhoods',color:'#2b7de9',g:'a'},
- {id:'census',label:'Census tracts',color:'#1f9d55',g:'a'},
- {id:'cities',label:'Cities',color:'#e8833a',g:'a'},
- {id:'grocery',label:'Groceries',color:'#2b7de9',g:'p'},
- {id:'restaurants',label:'Food',color:'#e5484d',g:'p'}];
-const groups={},chips={},all=[];let selected=null,census=null,neighborhoodsLayer=null,citiesLayer=null;
+  const START  = { center: [-122.655, 45.515], zoom: 11.3 };
+  const METRO  = [[-123.1535, 45.2814], [-122.3315, 45.6574]];  // Metro boundary extent
+  const BOUNDS = [[-124.30, 44.30], [-121.20, 46.60]];   // how far you can pan
+  const ZOOM   = { min: 8, max: 19.5, buildings: 15 };
 
-/* DOM */
-document.body.insertAdjacentHTML('beforeend',`<div class="top"><div class="topbar"><div class="search"><span class="home"></span><input type="search" placeholder="Search neighborhoods & places" aria-label="Search" autocomplete="off"><button class="clear" aria-label="Clear search" hidden>&times;</button></div><button class="lbtn" aria-label="Map layers" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></button></div><div class="results"></div><div class="menu" hidden></div></div><div class="dock"><div class="menu bmenu" hidden></div><button class="fab pin" aria-label="Drop an observation here"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z"/></svg></button><button class="fab bbtn" aria-label="Basemap" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2ZM9 4v14M15 6v14"/></svg></button><button class="fab locate" aria-label="Show my location"><svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="5"/></svg></button></div><section class="sheet" aria-hidden="true"><div class="grab"></div><button class="x" aria-label="Close">&times;</button><div class="body"></div></section>`);
-const home=$('.map-back-btn');if(home)$('.search .home').replaceWith(home);
-const sheet=$('.sheet'),body=$('.body',sheet),results=$('.results'),input=$('.search input');
-const openSheet=html=>{PX.lock=false;body.innerHTML=html;sheet.scrollTop=0;sheet.classList.add('open');sheet.setAttribute('aria-hidden','false');document.body.classList.add('sheet-open');PX.onCardRendered&&PX.onCardRendered();};
-const PX=window.PX={lock:false};
-const closeSheet=()=>{PX.lock=false;PX.onClose&&PX.onClose();sheet.classList.remove('open');sheet.setAttribute('aria-hidden','true');document.body.classList.remove('sheet-open');if(selected){selected.reset();selected=null;}};
-$('.x',sheet).onclick=closeSheet;
-new ResizeObserver(()=>document.body.style.setProperty('--sh',sheet.offsetHeight+'px')).observe(sheet);
-addEventListener('keydown',e=>e.key==='Escape'&&closeSheet());
-L.DomEvent.disableClickPropagation(sheet);L.DomEvent.disableScrollPropagation(sheet);
-L.DomEvent.disableClickPropagation($('.top'));
+  /* ---------- Colors (light = the layer guide) ---------- */
+  const PALETTE = {
+    light: {
+      background: '#E8E0D8',
+      lots:       '#E8E0D8',
+      lotLine:    '#CAC4BE',
+      parks:      '#CEDBAF',
+      golf:       '#CFE6CF',
+      cemeteries: '#D5DCC2',
+      water:      '#C2D4E8',
+      waterLine:  '#ACC4E4',
+      schools:    '#EDE0B2',
+      trail:      '#F1F7E9',
+      trailEdge:  '#8DA65B',
+      street:     '#FFFFFF',
+      streetCase: '#C9C2BA',
+      rail:       '#A49D95',
+      building:   '#D9CCBE',
+      buildingLine: '#D3C7B9',
+      metro:      '#333333',
+      text:       '#55524F',
+      textLot:    '#5C5650',
+      textCity:   '#45403B',
+      textPark:   '#3F5726',
+      textSchool: '#776628',
+      halo:       'rgba(255,255,255,0.95)',
+      shadow:     'rgba(84,70,56,0.50)',
+      highlight:  'rgba(255,255,255,0.40)',
+      accent:     'rgba(84,70,56,0.18)',
+    },
+    dark: {
+      background: '#1F2327',
+      lots:       '#1F2327',
+      lotLine:    '#30353A',
+      parks:      '#2C3A25',
+      golf:       '#24372B',
+      cemeteries: '#283027',
+      water:      '#1B3440',
+      waterLine:  '#28495A',
+      schools:    '#36311F',
+      trail:      '#C8D6B3',
+      trailEdge:  '#4D6338',
+      street:     '#3A3F45',
+      streetCase: '#0F1113',
+      rail:       '#5C5751',
+      building:   '#2C3034',
+      buildingLine: '#3A3F44',
+      metro:      '#B8BEC5',
+      text:       '#D2D6DA',
+      textLot:    '#B4BAC0',
+      textCity:   '#E4E6E8',
+      textPark:   '#A6C487',
+      textSchool: '#CBB977',
+      halo:       'rgba(22,25,28,0.92)',
+      shadow:     'rgba(0,0,0,0.55)',
+      highlight:  'rgba(255,255,255,0.07)',
+      accent:     'rgba(0,0,0,0.20)',
+    },
+  };
 
-/* Layer menu */
-const menu=$('.menu'),lbtn=$('.lbtn');
-const bmenu=$('.bmenu'),bbtn=$('.bbtn');
-const closeMenu=()=>{menu.hidden=bmenu.hidden=true;lbtn.setAttribute('aria-expanded','false');bbtn.setAttribute('aria-expanded','false');};
-lbtn.onclick=()=>{const o=menu.hidden;closeMenu();menu.hidden=!o;lbtn.setAttribute('aria-expanded',String(o));results.innerHTML='';};
-bbtn.onclick=()=>{const o=bmenu.hidden;closeMenu();bmenu.hidden=!o;bbtn.setAttribute('aria-expanded',String(o));};
-L.DomEvent.disableClickPropagation($('.dock'));
-map.on('click dragstart zoomstart',closeMenu);
-const mkRow=(s,i)=>{
- if(i===0||i===3)menu.insertAdjacentHTML('beforeend',`<h3>${i?'Places':'Areas'}</h3>`);
- const b=document.createElement('button');b.className='lrow';b.style.setProperty('--c',s.color);b.disabled=true;b.setAttribute('aria-pressed','false');b.innerHTML=`<i></i>${s.label}<em></em>`;
- b.onclick=()=>{toggle(s.id);closeMenu();};chips[s.id]=b;menu.appendChild(b);map.createPane('p-'+s.id).style.zIndex=410+i*10;
-};
-specs.forEach(mkRow);
-map.createPane('p-hl').style.zIndex=440;
-bmenu.insertAdjacentHTML('beforeend','<h3>Basemap</h3>');
-[['light','Light'],['soft','Standard']].forEach(([id,l])=>{
- const b=document.createElement('button');b.className='lrow';b.style.setProperty('--c','#8a9a94');b.setAttribute('aria-pressed','false');b.innerHTML=`<i></i>${l}<em></em>`;
- b.onclick=()=>{setBase(id);closeMenu();};baseBtns[id]=b;bmenu.appendChild(b);
-});
-let savedBase;try{savedBase=localStorage.getItem('pdxBase');}catch(e){}
-setBase(BASES[savedBase]?savedBase:'light');
-/* Follow the system light/dark setting live: swap to the matching basemap */
-let metro=null;
-darkMQ.addEventListener('change',e=>{dark=e.matches;PX.dark=dark;setBase(baseId);metro?.setStyle({color:dark?'#eef3f1':'#13201b'});});
-function toggle(id,on){
- const s=specs.find(x=>x.id===id),g=groups[id];if(!g)return;
- on=on??!map.hasLayer(g);
- if(on)specs.filter(x=>x.g===s.g&&x.id!==id).forEach(x=>toggle(x.id,false));
- on?g.addTo(map):map.removeLayer(g);
- chips[id].setAttribute('aria-pressed',String(on));
- if(on&&g.labels)g.labels();
- if(!on&&selected&&selected.id===id)closeSheet();
-}
+  /* ---------- Street hierarchy ---------- */
+  // Line width (px) for each street class at zoom 8, 10, 13, 16, 19.
+  const W = {
+    motorway:    [1.2, 2.0, 3.5, 9,   26],
+    trunk:       [1.0, 1.6, 3.0, 8,   22],
+    primary:     [0,   1.1, 2.6, 7,   20],
+    secondary:   [0,   0.7, 2.0, 6,   17],
+    tertiary:    [0,   0.4, 1.5, 5,   14],
+    ramp:        [0,   0.5, 1.2, 3.5, 10],
+    residential: [0,   0,   0.8, 3.5, 11],
+    minor:       [0,   0,   0.4, 2,   6],
+  };
+  const RANK = { motorway: 8, trunk: 7, primary: 6, secondary: 5, tertiary: 4, ramp: 3, residential: 2, minor: 1 };
 
-/* Detail cards */
-const stat=(l,v)=>`<div class="stat"><span>${l}</span><b>${v}</b></div>`;
-const dirs=ll=>`<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ll.lat},${ll.lng}">Directions</a>`;
-const change=(a,b)=>{if(!a||!b)return '<b>–</b>';const c=(a/b-1)*100;return `<b class="${c>=0?'up':'down'}">${c>=0?'+':''}${c.toFixed(1)}%</b>`;};
-function chart(series){
- const pts=Object.entries(series||{}).filter(([k,v])=>k>='2022-01'&&num(v)!=null).sort(([a],[b])=>a<b?-1:1);
- if(pts.length<2)return '';
- const W=320,H=88,vs=pts.map(p=>p[1]),lo=Math.min(...vs),hi=Math.max(...vs),sp=hi-lo||1;
- const xy=pts.map(([,v],i)=>[8+i*(W-16)/(pts.length-1),H-10-(v-lo)/sp*(H-30)]);
- const line=xy.map(p=>p.join(',')).join(' ');
- const id='c'+Math.random().toString(36).slice(2,7);
- setTimeout(()=>{
-  const el=document.getElementById(id);if(!el)return;
-  const dot=$('.d',el),rd=$('.rd',el),g=$('.g',el),svg=$('svg',el);
-  const show=e=>{const r=svg.getBoundingClientRect();const i=Math.max(0,Math.min(pts.length-1,Math.round((e.clientX-r.left)/r.width*(pts.length-1))));
-   const [x,y]=xy[i];dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.style.display='';g.setAttribute('x1',x);g.setAttribute('x2',x);
-   const d=new Date(pts[i][0]+'T12:00');rd.innerHTML=`<span>${d.toLocaleDateString('en-US',{month:'short',year:'numeric'})}</span><span>${usd(pts[i][1])}</span>`;};
-  el.addEventListener('pointermove',show);el.addEventListener('pointerdown',show);
- });
- const y0=pts[0][0].slice(0,4),y1=pts.at(-1)[0].slice(0,4);
- return `<div class="chart" id="${id}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Home value ${y0} to ${y1}"><line class="g" x1="8" x2="8" y1="0" y2="${H}"/><polygon class="a" points="8,${H} ${line} ${W-8},${H}"/><polyline class="l" points="${line}"/><circle class="d" r="5" cx="${xy.at(-1)[0]}" cy="${xy.at(-1)[1]}"/></svg><div class="rd"><span>${y0}</span><span>Touch chart to explore · ${y1}</span></div></div>`;
-}
-function inRing(p,ring){let c=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j];if((a.lat>p.lat)!==(b.lat>p.lat)&&p.lng<(b.lng-a.lng)*(p.lat-a.lat)/(b.lat-a.lat)+a.lng)c=!c;}return c;}
-function tractAt(ll){let hit=null;census?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
-function hoodAt(ll){let hit=null;neighborhoodsLayer?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
-function cityAt(ll){let hit=null;citiesLayer?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
-function cityAt(ll){let hit=null;citiesLayer?.eachLayer(l=>{if(hit||!l.getBounds().contains(ll))return;const g=l.getLatLngs();const polys=Array.isArray(g[0][0])?g:[g];if(polys.some(r=>inRing(ll,r[0])))hit=l.feature.properties;});return hit;}
-const HK=['HOMEVAL_ME','RENT_MED','MORT_COST_','MORT_TAX_M','YR_BUILT_M','INC_HH_MED'];
-function hoodStats(layer,ll){
- const b=layer.getBounds(),g=layer.getLatLngs(),polys=Array.isArray(g[0][0])?g:[g],N=16,sum={},n={};let hit=0;
- const add=t=>{for(const k of HK){const v=num(t[k]);if(v>0){sum[k]=(sum[k]||0)+v;n[k]=(n[k]||0)+1;}}};
- for(let i=0;i<N;i++)for(let j=0;j<N;j++){
-  const pt=L.latLng(b.getSouth()+(i+.5)/N*(b.getNorth()-b.getSouth()),b.getWest()+(j+.5)/N*(b.getEast()-b.getWest()));
-  if(!polys.some(q=>inRing(pt,q[0])))continue;
-  const t=tractAt(pt);if(t){add(t);hit++;}
- }
- if(!hit){const t=tractAt(ll);if(!t)return null;add(t);}
- return Object.fromEntries(HK.filter(k=>n[k]).map(k=>[k,sum[k]/n[k]]));
-}
-const starsHTML=attrs=>`<div class="stars" ${attrs} data-value="0"><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span><span class="star"><span class="s-bg">★</span><span class="s-fg">★</span></span></div>`;
-function hoodCard(p,hist,ll,layer){
- const now=p.ZHVI_2026_08,t=census?hoodStats(layer,ll):null,h=hist?.[p.RegionID];
- return `<div class="sec"><h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div></div>
- <div class="sec"><div class="price-row"><div class="big">${usd(now)}</div>${starsHTML(`data-region="${p.RegionID}"`)}</div><div class="sub">Typical home value (Zillow, Aug 2026)</div>
- <div class="pills"><div class="pill">${change(now,p.ZHVI_2025_08)}<span>Past year</span></div><div class="pill">${change(now,h?.['2021-08-31'])}<span>Past 5 years</span></div></div>${chart(h)}</div>
- ${t?`<div class="sec"><details><summary>Census estimates</summary><div class="grid">${stat('Median home value',usd(t.HOMEVAL_ME))}${stat('Median rent',usd(t.RENT_MED))}${stat('Monthly mortgage',usd(t.MORT_COST_))}${stat('Yearly property tax',usd(t.MORT_TAX_M))}${stat('Typical year built',t.YR_BUILT_M?Math.round(t.YR_BUILT_M):'–')}${stat('Household income',usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details></div>`:''}`;
-}
-const meter=(l,v,o)=>`<div class="stat wide"><div class="key" style="font-size:15px;color:var(--ink)"><span>${l}</span><b>${pct(v)}</b></div><div class="meter"><div class="bar"><i style="width:${v}%"></i></div>${o?`<u style="left:${o}%"></u>`:''}</div>${o?`<div class="key"><span>Oregon average ${pct(o)}</span></div>`:''}</div>`;
-function schools(p){
- const rows=[['Reading','English_La','Oregon_ELA'],['Math','Mathematic','Oregon_Mat'],['Science','Science','Oregon_Sci']].filter(([,k])=>+p[k]>0);
- return `<details><summary>Schools</summary>${rows.length?`<div class="grid">${rows.map(([l,k,o])=>meter(l,+p[k],+p[o]||0)).join('')}</div><div class="sub">Test scores show the share of students meeting standards.</div>`:'<div class="sub" style="padding-bottom:8px">No school data for this tract.</div>'}</details>`;
-}
-function tractCard(p){
- const gk=Object.keys(p).find(k=>/^[A-F][+-]?$/.test(p[k]||'')&&!/FUNC/i.test(k)),own=num(p.OWN_OCC_PC)??0,rent=num(p.RENT_OCC_P)??0;
- const zones=[['Commercial','ZONE_Comme'],['Residential','ZONE_Resid'],['Res. rural','ZONE_Res_R'],['Industrial','ZONE_Indus'],['Parks','ZONE_Park_'],['Farm','ZONE_Farmi'],['Forest','ZONE_Fores']].filter(([,k])=>+p[k]>=1).sort((a,b)=>p[b[1]]-p[a[1]]);
- return `<h2>Census tract ${esc(String(p.GEOID||'').slice(-6))}</h2><div class="sub">${num(p.POP_Total)?.toLocaleString()||'–'} people · median age ${num(p.AGE_MED)??'–'}</div>
- <div class="big">${usd(p.INC_HH_MED)}</div><div class="sub">Median household income</div>
- <div class="grid">${stat('Median home value',usd(p.HOMEVAL_ME))}${stat('Median rent',usd(p.RENT_MED))}${stat('Monthly mortgage',usd(p.MORT_COST_))}${stat('Yearly property tax',usd(p.MORT_TAX_M))}
- ${gk?`<div class="stat wide"><span>Niche grade</span><b>${esc(p[gk])}</b></div>`:''}<div class="stat wide"><span>Own vs. rent</span><div class="bar"><i style="width:${own}%"></i><i style="width:${rent}%"></i></div><div class="key"><span>Own ${pct(own)}</span><span>Rent ${pct(rent)}</span></div></div></div>
- <details><summary>Demographics</summary><div class="grid">${stat('Under 18',pct(p.AGE_U18_PC))}${stat('65 and older',pct(p.AGE_65P_PC))}<div class="stat wide"><span>Bachelor's degree or higher</span><div class="bar"><i style="width:${num(p.EDU_BA_PCT)??0}%"></i></div><div class="key"><span>${pct(p.EDU_BA_PCT)}</span><span>Poverty ${pct(p.INC_POV_PC)}</span></div></div></div></details>
- ${schools(p)}
- ${zones.length?`<details><summary>Land use</summary><div class="grid">${zones.map(([n,k])=>stat(n,pct(p[k]))).join('')}</div></details>`:''}`;
-}
-const cityCard=p=>{const t=String(p.NAMELSAD||'').replace(p.NAME,'').trim();return `<h2>${esc(p.NAME)}</h2><div class="sub">${t==='CDP'?'Census-designated place':esc(title(t)||'City')}</div>`;};
-const placeCard=(t,sub,ll,extra='')=>`<h2>${esc(t)}</h2><div class="sub">${esc(sub)}</div>${extra}${dirs(ll)}`;
-const obsColors={Yes:'#0f7b5f',No:'#d64545',Remember:'#e0a100'};
+  // Extra width of the gray outline around each street, at the same zooms.
+  const CASE = [1.2, 1.4, 1.6, 2.0, 2.6];
 
-/* Layers */
-let hl=null;
-function highlightOnly(ll,color){
- if(selected)selected.reset();
- hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color,weight:3,fillColor:color,fillOpacity:.2,interactive:false}).addTo(map);
- selected={id:'_ext',reset(){if(hl)map.removeLayer(hl);hl=null;}};
-}
-function clearIfLayer(layer){if(selected&&selected.layer===layer){selected.reset();selected=null;}}
-function pick(layer,id,html,ll){
- PX.onClose&&PX.onClose();
- if(selected)selected.reset();
- const poly=['neighborhoods','cities','census'].includes(id);
- if(poly){layer.setStyle({weight:3.5,fillOpacity:.28,opacity:1});layer.bringToFront();selected={id,reset:()=>layer.setStyle(styleOf(id))};}
- else{const c=layer.hc||'#0f7b5f';hl=L.circleMarker(ll,{pane:'p-hl',radius:19,color:c,weight:3,fillColor:c,fillOpacity:.2,interactive:false}).addTo(map);selected={id,layer,reset(){if(hl)map.removeLayer(hl);hl=null;}};}
- openSheet(html);
- if(poly){if(mobile.matches)map.panTo(ll,{animate:true});return;}
- const size=map.getSize(),pt=map.latLngToContainerPoint(ll);
- const nearEdge=pt.x<24||pt.y<24||pt.x>size.x-24||pt.y>size.y-24;
- const covered=mobile.matches?pt.y>size.y-sheet.offsetHeight-24:pt.x<400;
- if(!nearEdge&&!covered)return; /* already clearly visible — leave the map alone (moving it would collapse a spiderfied cluster) */
- const z=Math.max(map.getZoom(),15),shift=mobile.matches?[0,sheet.offsetHeight/2]:[-198,0];
- map.flyTo(map.unproject(map.project(ll,z).add(shift),z),z,{duration:.6});
-}
-const styleOf=id=>{const c=specs.find(s=>s.id===id).color;return {color:c,weight:1.5,opacity:.4,fillColor:c,fillOpacity:.25};};
-function build(s,data,hist){
- const pane='p-'+s.id,items=[];let g;
- if(s.g==='a'){
-  g=L.geoJSON(data,{pane,style:()=>styleOf(s.id),onEachFeature:(f,l)=>{
-   const p=f.properties;
-   l.on('click',e=>{L.DomEvent.stopPropagation(e);pick(l,s.id,s.id==='neighborhoods'?hoodCard(p,hist,e.latlng,l):s.id==='census'?tractCard(p):cityCard(p),e.latlng);});
-   if(s.id!=='census'){const n=p.Name||p.NAME;l.bindTooltip(n,{permanent:true,direction:'center',className:'nl',interactive:false});items.push({l,n});}
-  }});
-  if(items.length){g.items=items;g.labels=()=>labels(g);map.on('moveend',()=>map.hasLayer(g)&&labels(g));}
-  if(s.id==='census')census=g;
-  if(s.id==='neighborhoods')neighborhoodsLayer=g;
-  if(s.id==='cities')citiesLayer=g;
-  if(s.id==='cities')citiesLayer=g;
- }else{
-  const gj=L.geoJSON(data,{pane,pointToLayer:(f,ll)=>{const c=s.id==='observations'?obsColors[f.properties.Observation_Type]||s.color:s.color;const m=L.marker(ll,{icon:L.divIcon({className:'',html:`<i class="dot" style="background:${c}"></i>`,iconSize:[22,22]})});m.hc=c;return m;},
-   onEachFeature:(f,l)=>{const p=f.properties,ll=l.getLatLng();l.on('click',e=>{L.DomEvent.stopPropagation(e);
-    let h;
-    if(s.id==='grocery')h=placeCard(p.Name,[p.Address,p.City].filter(Boolean).join(', '),ll,p.Notes?`<div class="note">${esc(p.Notes)}</div>`:'');
-    else if(s.id==='restaurants')h=placeCard(p.USER_NAME,[p.USER_CATEGORY,p.USER_ADDRESS].filter(Boolean).join(' · '),ll);
-    else{const c=obsColors[p.Observation_Type]||s.color;h=placeCard(p.Observation_Type==='Remember'?'Remember this':p.Observation_Type==='Yes'?'Liked this spot':'Not for us',' ',ll,`<span class="badge" style="--c:${c}">${esc(p.Observation_Type)}</span>${p.Notes?`<div class="note">${esc(p.Notes)}</div>`:''}${(p.Photos||[]).length?`<div class="photos">${p.Photos.map(x=>`<img loading="lazy" alt="Photo" src="data/${x.split('/').map(encodeURIComponent).join('/')}">`).join('')}</div>`:''}`);}
-    pick(l,s.id,h,ll);});}});
-  g=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:45,spiderfyOnMaxZoom:true,iconCreateFunction:c=>{const n=c.getChildCount(),z=n<10?38:n<50?46:54;return L.divIcon({className:'',html:`<div class="cl" style="background:${s.color}">${n}</div>`,iconSize:[z,z]});}});
-  g.addLayer(gj);
- }
- groups[s.id]=g;chips[s.id].disabled=false;
-}
-/* Labels: show only names that fit, without overlapping each other */
-const ctx=document.createElement('canvas').getContext('2d');
-function labels(g){
- ctx.font='700 12px Figtree,sans-serif';const placed=[];
- g.items.map(({l,n})=>{const b=l.getBounds(),a=map.latLngToContainerPoint(b.getNorthWest()),z=map.latLngToContainerPoint(b.getSouthEast());return {l,n,w:Math.abs(z.x-a.x),h:Math.abs(z.y-a.y),c:map.latLngToContainerPoint(b.getCenter())};})
-  .sort((a,b)=>b.w*b.h-a.w*a.h).forEach(o=>{
-   const tw=ctx.measureText(o.n).width,r={l:o.c.x-tw/2-3,r:o.c.x+tw/2+3,t:o.c.y-9,b:o.c.y+9};
-   const ok=o.w>tw+14&&o.h>26&&!placed.some(q=>r.l<q.r&&r.r>q.l&&r.t<q.b&&r.b>q.t);
-   if(ok){placed.push(r);o.l.openTooltip(map.containerPointToLatLng(o.c));}else o.l.closeTooltip();});
-}
+  function widthAt(i, withCase) {
+    const m = ['match', ['get', 'class']];
+    for (const [k, v] of Object.entries(W)) m.push(k, v[i] > 0 && withCase ? v[i] + CASE[i] : v[i]);
+    m.push(0.5);
+    return m;
+  }
+  const zoomed = (withCase) => ['interpolate', ['exponential', 1.6], ['zoom'],
+    8, widthAt(0, withCase), 10, widthAt(1, withCase), 13, widthAt(2, withCase), 16, widthAt(3, withCase), 19, widthAt(4, withCase)];
+  const streetWidth = zoomed(false);
+  const caseWidth   = zoomed(true);
+  const streetRank = ['match', ['get', 'class'], ...Object.entries(RANK).flat(), 0];
 
-/* Data */
-const load=async f=>{let err;for(const b of ['data/','']){try{const r=await fetch(b+f);if(r.ok)return await r.json();err=`${b+f} returned HTTP ${r.status}`;}catch(e){err=`${b+f}: ${e.message}`;}}throw Error(err);};
-const toast=(t,ms=12000)=>{const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),ms);};
-const fails=[];let ft;
-const fail=(n,e)=>{console.error(n,e);fails.push(n);clearTimeout(ft);ft=setTimeout(()=>toast(location.protocol==='file:'?'Open this through a web server (http://), not by double-clicking the file. Browsers block data loading from local files.':`Couldn't load ${fails.join(', ')}. First error: ${e.message}`),400);};
-const searchable=[];
-load('metro.geojson').then(d=>{const m=metro=L.geoJSON(d,{interactive:false,style:{color:dark?'#eef3f1':'#13201b',weight:2,dashArray:'6 6',fill:false,opacity:.6}}).addTo(map);map.fitBounds(m.getBounds(),{padding:[30,30]});}).catch(e=>fail('metro boundary',e));
-specs.forEach(s=>{
- const req=s.id==='neighborhoods'?Promise.all([load('neighborhoods.geojson'),load('zhvi_history.json').catch(()=>({}))]):load(s.id+'.geojson').then(d=>[d]);
- (s.id==='neighborhoods'?req:req).then(([d,h])=>{
-  build(s,d,h);
-  d.features.forEach(f=>{const p=f.properties,n=p.Name||p.NAME||p.USER_NAME;if(n&&s.id!=='census'&&s.id!=='observations')searchable.push({n,sub:s.id==='neighborhoods'?title(p.City):s.label,s,f});});
-  if(s.id==='neighborhoods')toggle('neighborhoods',true);
- }).catch(e=>fail(s.label,e));
-});
+  /* ---------- Style ---------- */
+  function buildStyle(theme) {
+    const c = PALETTE[theme];
+    const halo = (w) => ({ 'text-halo-color': c.halo, 'text-halo-width': w });
 
-/* Search */
-const clearBtn=$('.clear');
-input.addEventListener('input',()=>{
- const q=input.value.trim(),ql=q.toLowerCase();
- clearBtn.hidden=!q;
- const local=ql.length<2?'':searchable.filter(x=>x.n.toLowerCase().includes(ql)).slice(0,6).map(x=>`<button data-i="${searchable.indexOf(x)}">${esc(x.n)}<small>${esc(x.sub)}</small></button>`).join('');
- results.innerHTML=local?`<h3 class="rh">Neighborhoods &amp; places</h3>${local}`:'';
-});
-clearBtn.onclick=()=>{input.value='';clearBtn.hidden=true;results.innerHTML='';input.focus();};
-results.addEventListener('click',e=>{
- const b=e.target.closest('button');if(!b)return;
- const x=searchable[+b.dataset.i];
- results.innerHTML='';input.value=x.n;input.blur();
- if(!map.hasLayer(groups[x.s.id]))toggle(x.s.id,true);
- let target;groups[x.s.id].eachLayer(l=>{if(l.feature===x.f)target=l;});
- if(!target)return;
- if(target.getBounds){map.fitBounds(target.getBounds(),{padding:[40,40]});target.fire('click',{latlng:target.getBounds().getCenter()});}
- else{map.setView(target.getLatLng(),16);target.fire('click');}
-});
-map.on('click',()=>{if(!PX.lock)closeSheet();results.innerHTML='';});
-map.on('dragstart',()=>{if(!PX.lock)closeSheet();});
+    return {
+      version: 8,
+      glyphs: GLYPHS,
+      sources: {
+        base:      { type: 'vector', url: 'pmtiles://' + TILES.base },
+        buildings: { type: 'vector', url: 'pmtiles://' + TILES.buildings },
+        lots:      { type: 'vector', url: 'pmtiles://' + TILES.lots },
+        terrain:   { type: 'raster-dem', tiles: [TERRAIN], tileSize: 256, maxzoom: 15, encoding: 'terrarium',
+                     attribution: 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>' },
+      },
+      layers: [
+        { id: 'background', type: 'background', paint: { 'background-color': c.background } },
 
-/* Location */
-let me,halo,watching=false;
-$('.locate').onclick=()=>{
- if(!navigator.geolocation)return toast('Location isn’t available on this device');
- const go=p=>{const ll=L.latLng(p.coords.latitude,p.coords.longitude);
-  if(!me){halo=L.circle(ll,{radius:p.coords.accuracy,weight:0,fillColor:'#2b7de9',fillOpacity:.14,interactive:false}).addTo(map);me=L.circleMarker(ll,{radius:8,weight:3,color:'#fff',fillColor:'#2b7de9',fillOpacity:1,interactive:false,className:'me'}).addTo(map);}
-  else{me.setLatLng(ll);halo.setLatLng(ll).setRadius(p.coords.accuracy);}
-  return ll;};
- navigator.geolocation.getCurrentPosition(p=>{map.setView(go(p),15);if(!watching){watching=true;navigator.geolocation.watchPosition(go,()=>{},{enableHighAccuracy:true});}},()=>toast('Allow location access to see where you are'),{enableHighAccuracy:true,timeout:15000});
-};
-Object.assign(PX,{map,openSheet,closeSheet,pick,toggle,esc,usd,dirs,dark,body,highlightOnly,hoodAt,cityAt,clearIfLayer,cityAt,
- toast:t=>toast(t,5000),
- register:(sp,g)=>{specs.push(sp);mkRow(specs.length-1===0?sp:sp,specs.length-1);groups[sp.id]=g;chips[sp.id].disabled=false;},
- pinBtn:$('.pin')});
+        /* Ground */
+        { id: 'lots',       type: 'fill', source: 'base', 'source-layer': 'lots',       paint: { 'fill-color': c.lots } },
+        { id: 'lot-lines',  type: 'line', source: 'lots', 'source-layer': 'lots', minzoom: 15,
+          paint: {
+            'line-color': c.lotLine,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.4, 17, 0.8, 19, 1.2],
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6, 1],
+          } },
+        { id: 'parks',      type: 'fill', source: 'base', 'source-layer': 'parks',      paint: { 'fill-color': c.parks } },
+        { id: 'golf',       type: 'fill', source: 'base', 'source-layer': 'golf',       paint: { 'fill-color': c.golf } },
+        /* Hillshade sits on top of the ground layers so their colors pick up the terrain */
+        { id: 'hillshade', type: 'hillshade', source: 'terrain',
+          paint: {
+            'hillshade-illumination-anchor': 'map',
+            'hillshade-illumination-direction': 315,
+            'hillshade-exaggeration': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 13, 0.45, 17, 0.3],
+            'hillshade-shadow-color': c.shadow,
+            'hillshade-highlight-color': c.highlight,
+            'hillshade-accent-color': c.accent,
+          } },
+        /* Cemeteries sit above the hillshade so their guide color (#D5DCC2) shows true */
+        { id: 'cemeteries', type: 'fill', source: 'base', 'source-layer': 'cemeteries', paint: { 'fill-color': c.cemeteries } },
+        { id: 'water',      type: 'fill', source: 'base', 'source-layer': 'water',      paint: { 'fill-color': c.water } },
+        /* Thin darker shoreline, like PortlandMaps */
+        { id: 'water-line', type: 'line', source: 'base', 'source-layer': 'water', minzoom: 10,
+          paint: {
+            'line-color': c.waterLine,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 14, 0.9, 18, 1.4],
+          } },
+        { id: 'schools',    type: 'fill', source: 'base', 'source-layer': 'schools',    paint: { 'fill-color': c.schools } },
+
+        /* Trails: dashed green line on a soft light ribbon so they show on any ground */
+        { id: 'trails-edge', type: 'line', source: 'base', 'source-layer': 'trails', minzoom: 12,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': c.trail,
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.42, 15, 0.72],
+            'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 12, 1.3, 14, 2.3, 17, 4.1, 19, 6],
+          } },
+        { id: 'trails', type: 'line', source: 'base', 'source-layer': 'trails', minzoom: 11,
+          layout: { 'line-cap': 'butt', 'line-join': 'round' },
+          paint: {
+            'line-color': c.trailEdge,
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0.52, 14, 0.92],
+            'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 11, 0.65, 14, 1.1, 17, 1.85, 19, 2.6],
+            'line-dasharray': [2.25, 1.7],
+          } },
+
+        /* Streets */
+        { id: 'rail', type: 'line', source: 'base', 'source-layer': 'streets', minzoom: 12,
+          filter: ['==', ['get', 'class'], 'rail'],
+          paint: {
+            'line-color': c.rail,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 1.4, 19, 2.4],
+            'line-dasharray': [3, 2],
+          } },
+        { id: 'streets-case', type: 'line', source: 'base', 'source-layer': 'streets',
+          filter: ['!=', ['get', 'class'], 'rail'],
+          layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': streetRank },
+          paint: { 'line-color': c.streetCase, 'line-width': caseWidth } },
+        { id: 'streets', type: 'line', source: 'base', 'source-layer': 'streets',
+          filter: ['!=', ['get', 'class'], 'rail'],
+          layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': streetRank },
+          paint: { 'line-color': c.street, 'line-width': streetWidth } },
+
+        /* Buildings (zoomed in only) */
+        { id: 'buildings', type: 'fill', source: 'buildings', 'source-layer': 'buildings', minzoom: ZOOM.buildings,
+          paint: {
+            'fill-color': c.building,
+            'fill-outline-color': c.buildingLine,
+            'fill-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, 1],
+          } },
+
+        /* Metro boundary */
+        { id: 'metro', type: 'line', source: 'base', 'source-layer': 'metro',
+          layout: { 'line-join': 'round' },
+          paint: {
+            'line-color': c.metro,
+            'line-opacity': 0.75,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 14, 1.6, 18, 2.4],
+            'line-dasharray': [4, 3],
+          } },
+
+        /* ---------- Labels ---------- */
+        { id: 'label-lots', type: 'symbol', source: 'lots', 'source-layer': 'lotlabels', minzoom: 17,
+          layout: {
+            'text-field': ['get', 'num'], 'text-font': FONT.regular,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 17, 9.5, 19, 11.5],
+            'text-padding': 2,
+          },
+          paint: { 'text-color': c.textLot, 'text-halo-color': c.halo, 'text-halo-width': 1.3, 'text-halo-blur': 0.3 } },
+        { id: 'label-trails', type: 'symbol', source: 'base', 'source-layer': 'trails', minzoom: 15,
+          filter: ['has', 'name'],
+          layout: {
+            'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-font': FONT.italic,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 15, 10, 18, 12],
+            'symbol-spacing': 300, 'text-max-angle': 30,
+          },
+          paint: { 'text-color': c.textPark, ...halo(1.4) } },
+
+        { id: 'label-streets', type: 'symbol', source: 'base', 'source-layer': 'streets', minzoom: 13,
+          // More street names appear as you zoom in.
+          filter: ['all', ['has', 'name'],
+            ['step', ['zoom'],
+              ['in', ['get', 'class'], ['literal', ['trunk', 'primary', 'secondary']]],
+              14.5, ['in', ['get', 'class'], ['literal', ['trunk', 'primary', 'secondary', 'tertiary']]],
+              15.5, ['in', ['get', 'class'], ['literal', ['trunk', 'primary', 'secondary', 'tertiary', 'residential']]],
+              16.5, ['!=', ['get', 'class'], 'motorway'],
+            ]],
+          layout: {
+            'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-font': FONT.semibold,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10.5, 16, 12, 19, 14],
+            'symbol-sort-key': ['-', 0, streetRank], 'symbol-spacing': 350, 'text-max-angle': 30,
+            'text-padding': 4,
+          },
+          paint: { 'text-color': c.text, ...halo(1.2) } },
+
+        { id: 'label-schools', type: 'symbol', source: 'base', 'source-layer': 'labels', minzoom: 15,
+          filter: ['==', ['get', 'kind'], 'school'],
+          layout: {
+            'text-field': ['get', 'name'], 'text-font': FONT.semibold, 'text-size': 11,
+            'text-max-width': 8, 'text-padding': 6,
+          },
+          paint: { 'text-color': c.textSchool, ...halo(1.4) } },
+
+        { id: 'label-parks', type: 'symbol', source: 'base', 'source-layer': 'labels', minzoom: 11,
+          filter: ['in', ['get', 'kind'], ['literal', ['park', 'golf', 'cemetery']]],
+          layout: {
+            'text-field': ['get', 'name'], 'text-font': FONT.italic,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 11, 10.5, 15, 12, 18, 13],
+            'text-max-width': 8, 'text-padding': 6,
+            'symbol-sort-key': ['-', 0, ['coalesce', ['get', 'acres'], 0]],
+          },
+          paint: { 'text-color': c.textPark, ...halo(1.4) } },
+
+        { id: 'label-cities', type: 'symbol', source: 'base', 'source-layer': 'labels', maxzoom: 13,
+          filter: ['==', ['get', 'kind'], 'city'],
+          layout: {
+            'text-field': ['get', 'name'], 'text-font': FONT.semibold,
+            'text-size': ['interpolate', ['linear'], ['zoom'],
+              8, 11,
+              10, ['case', ['>', ['get', 'rank'], 20000], 15, 12.5],
+              12, 14],
+            'text-transform': 'uppercase', 'text-letter-spacing': 0.12, 'text-max-width': 8,
+            'symbol-sort-key': ['-', 0, ['get', 'rank']], 'text-padding': 10,
+          },
+          paint: {
+            'text-color': c.textCity, ...halo(1.8),
+            'text-opacity': ['interpolate', ['linear'], ['zoom'], 12, 1, 13, 0],
+          } },
+      ],
+    };
+  }
+
+  /* ---------- Map ---------- */
+  const errorBox = document.getElementById('mapError');
+  if (!window.maplibregl || !window.pmtiles) { errorBox.hidden = false; return; }
+
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', protocol.tile);
+
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  const themeNow = () => (darkQuery.matches ? 'dark' : 'light');
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: buildStyle(themeNow()),
+    center: START.center,
+    zoom: START.zoom,
+    minZoom: ZOOM.min,
+    maxZoom: ZOOM.max,
+    maxBounds: BOUNDS,
+    hash: 'view',                 // keeps your spot if the page reloads
+    attributionControl: false,
+    pitchWithRotate: false,
+    touchPitch: false,
+    fadeDuration: 150,
+  });
+  window.explorerMap = map;       // handy for debugging in the browser console
+
+  // Farthest zoom-out = the whole Metro area plus a small margin, for this screen size.
+  function fitMinZoom() {
+    const cam = map.cameraForBounds(METRO, { padding: 24 });
+    if (cam) map.setMinZoom(Math.max(ZOOM.min, cam.zoom - 0.6));
+  }
+  fitMinZoom();
+  map.on('load', fitMinZoom);
+  map.on('resize', fitMinZoom);
+
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showAccuracyCircle: true,
+    fitBoundsOptions: { maxZoom: 16 },
+  }), 'top-right');
+  map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 90 }), 'bottom-left');
+  map.addControl(new maplibregl.AttributionControl({
+    compact: true,
+    customAttribution: 'Data: Oregon Metro RLIS',
+  }), 'bottom-right');
+
+  // Follow the phone/computer light–dark setting, live.
+  darkQuery.addEventListener('change', () => map.setStyle(buildStyle(themeNow())));
+
+  // Only show the error banner if tiles keep failing.
+  let tileErrors = 0;
+  map.on('error', (e) => {
+    console.warn('[map]', e && e.error ? e.error.message : e);
+    if (e && e.sourceId && ++tileErrors > 8) errorBox.hidden = false;
+  });
 })();

@@ -1,0 +1,8 @@
+# Raw GeoJSON too big for GitHub (100 MB limit) — the map uses maps/explorer/tiles instead
+maps/explorer/data/buildingFootprints.geojson
+maps/explorer/data/lots_outline.geojson
+maps/explorer/data/lots_background.geojson
+maps/explorer/data/streets.geojson
+maps/explorer/data/trails.geojson
+maps/explorer/data/parksNaturalAreas.geojson
+_build/
