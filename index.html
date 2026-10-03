@@ -2,103 +2,148 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PDX Livability</title>
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f2f0e9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141a17" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F5F2E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16191C" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Portland">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=20261003f">
 </head>
 <body>
 
-<main>
-  <section class="hero">
-    <svg class="hero-dots" viewBox="0 0 420 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      <circle cx="330" cy="95" r="95" fill="#2b7de9"/>
-      <circle cx="245" cy="250" r="72" fill="#1f9d55"/>
-      <circle cx="368" cy="270" r="46" fill="#e8833a"/>
-      <circle cx="140" cy="340" r="58" fill="#8e4ec6"/>
-      <circle cx="378" cy="160" r="32" fill="#e5484d"/>
-    </svg>
-    <div class="hero-inner">
-      <h1>Portland</h1>
-      <div class="hero-row">
-        <p class="lede">See the latest updates and add homes directly to the map.</p>
-        <div class="hero-actions">
-          <a class="cta" href="maps/explorer/index.html">Open the map</a>
-          <button class="cta alt" id="addHomeBtn" type="button">Add a home</button>
-        </div>
-      </div>
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>PDX Livability</span>
+  </div>
+  <div class="who" id="who" hidden>
+    <span class="avatar" id="avatar"></span>
+    <button type="button" class="link" id="signOut">Sign out</button>
+  </div>
+</header>
 
-      <form class="homeform" id="homeForm" hidden>
-        <input name="link" inputmode="url" placeholder="Zillow link (fills in the address)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        <div class="addr-wrap">
-          <input name="addr-q" placeholder="Address" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-          <div class="addr-results" id="addrResults"></div>
-        </div>
-        <p class="hint" id="addrHint"></p>
-      <input name="price" inputmode="numeric" placeholder="Price">
-      <div class="row3">
-        <input name="beds" inputmode="decimal" placeholder="Beds">
-        <input name="baths" inputmode="decimal" placeholder="Baths">
-        <input name="sqft" inputmode="numeric" placeholder="Sq ft">
+<main>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-art" aria-hidden="true"><img src="images/forest-park-trail.jpg" alt="" fetchpriority="high"></div>
+    <div class="hero-body">
+      <p class="eyebrow">Where should we live?</p>
+      <h1>Portland</h1>
+      <p class="lede">Explore neighborhoods, schools and homes, and keep track of everything we find along the way.</p>
+      <div class="actions">
+        <a class="btn primary" href="maps/explorer/index.html">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5 3.75 7v12L9 17l6 2 5.25-2V5L15 7z"/><path d="M9 5v12M15 7v12"/></svg>
+          Open the map
+        </a>
+        <button class="btn secondary" id="addHomeBtn" type="button">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 10.4 12 4.5l7.25 5.9V18.5a1 1 0 0 1-1 1H5.75a1 1 0 0 1-1-1z"/><path d="M12 10.5v6M9 13.5h6"/></svg>
+          Add a home
+        </button>
       </div>
-      <textarea name="note" rows="3" placeholder="Notes"></textarea>
-      <label class="photobtn">Add photos<input type="file" accept="image/*" multiple hidden></label>
-      <div class="thumbs" id="homeThumbs"></div>
-      <p class="err" id="homeErr"></p>
-      <div class="formacts">
-        <button type="button" class="ghost" id="cancelHome">Cancel</button>
-        <button type="submit" id="saveHome" disabled>Save home</button>
-      </div>
-    </form>
     </div>
   </section>
 
-  <div class="gate" id="gate" hidden>
-    <p>Sign in to see recent updates and add homes.</p>
-    <form id="signin">
+  <!-- Sign in -->
+  <section class="gate panel" id="gate" hidden>
+    <h2>Sign in</h2>
+    <p class="muted">Sign in to see recent updates and add homes.</p>
+    <form id="signin" class="stack">
       <input type="email" name="email" placeholder="Email" autocomplete="username" required>
       <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
-      <button type="submit">Sign in</button>
+      <button type="submit" class="btn primary wide">Sign in</button>
       <p class="err" id="signinErr"></p>
     </form>
-  </div>
+  </section>
 
-  <section class="authed" id="authed" hidden>
+  <div id="authed" hidden>
+    <section class="block">
+      <div class="block-head">
+        <h2>Homes <span class="count" id="homesCount"></span></h2>
+        <div class="nav" data-for="homesGrid">
+          <button type="button" class="navbtn prev" aria-label="Scroll left"><svg class="ic" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></svg></button>
+          <button type="button" class="navbtn next" aria-label="Scroll right"><svg class="ic" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></svg></button>
+        </div>
+      </div>
+      <div class="row homes" id="homesGrid"></div>
+    </section>
 
     <section class="block">
       <div class="block-head">
         <h2>Recent updates</h2>
         <div class="nav" data-for="updatesGrid">
-          <button type="button" class="navbtn prev" aria-label="Scroll left">&#8592;</button>
-          <button type="button" class="navbtn next" aria-label="Scroll right">&#8594;</button>
+          <button type="button" class="navbtn prev" aria-label="Scroll left"><svg class="ic" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></svg></button>
+          <button type="button" class="navbtn next" aria-label="Scroll right"><svg class="ic" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></svg></button>
         </div>
       </div>
       <div class="row updates" id="updatesGrid"></div>
     </section>
-
-    <section class="block">
-      <div class="block-head">
-        <h2>Homes</h2>
-        <div class="nav" data-for="homesGrid">
-          <button type="button" class="navbtn prev" aria-label="Scroll left">&#8592;</button>
-          <button type="button" class="navbtn next" aria-label="Scroll right">&#8594;</button>
-        </div>
-      </div>
-
-      <div class="row homes" id="homesGrid"></div>
-    </section>
-
-  </section>
+  </div>
 </main>
 
+<!-- Add a home: bottom sheet on phones, dialog on desktop -->
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="homeSheet" role="dialog" aria-modal="true" aria-labelledby="homeTitle" hidden>
+  <div class="sheet-head">
+    <h2 id="homeTitle">Add a home</h2>
+    <button type="button" class="x" id="closeHome" aria-label="Close"><svg class="ic" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+  </div>
+  <form class="homeform" id="homeForm" novalidate>
+    <div class="step">
+      <label class="lbl" for="linkIn">Zillow link</label>
+      <input id="linkIn" name="link" inputmode="url" placeholder="Paste a Zillow link to fill in the address" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="or"><span>or</span></div>
+      <label class="lbl" for="addrIn">Address</label>
+      <div class="addr-wrap">
+        <input id="addrIn" name="addr-q" placeholder="Start with the house number, e.g. 1234 SE Ash St" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <div class="addr-results" id="addrResults" role="listbox"></div>
+      </div>
+      <p class="hint" id="addrHint"></p>
+      <div class="check" id="schoolCheck" hidden></div>
+    </div>
+
+    <div class="details" id="details" hidden>
+      <div class="grid2">
+        <div><label class="lbl" for="priceIn">Price</label><input id="priceIn" name="price" inputmode="numeric" placeholder="$"></div>
+        <div><label class="lbl" for="sqftIn">Sq ft</label><input id="sqftIn" name="sqft" inputmode="numeric"></div>
+        <div><label class="lbl" for="bedsIn">Beds</label><input id="bedsIn" name="beds" inputmode="decimal"></div>
+        <div><label class="lbl" for="bathsIn">Baths</label><input id="bathsIn" name="baths" inputmode="decimal"></div>
+      </div>
+      <label class="lbl" for="noteIn">Notes</label>
+      <textarea id="noteIn" name="note" rows="3"></textarea>
+      <label class="photobtn">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5a2 2 0 0 1 2-2h1.8l1.4-2h4.6l1.4 2h1.8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.25"/></svg>
+        Add photos<input type="file" accept="image/*" multiple hidden>
+      </label>
+      <div class="thumbs" id="homeThumbs"></div>
+    </div>
+    <p class="err" id="homeErr"></p>
+    <div class="formacts">
+      <button type="button" class="btn ghost" id="cancelHome">Cancel</button>
+      <button type="submit" class="btn primary" id="saveHome" disabled>Continue</button>
+    </div>
+  </form>
+
+  <!-- Attendance-area requirement not met -->
+  <div class="alert" id="reqAlert" hidden role="alertdialog" aria-labelledby="reqMsg">
+    <div class="alert-card">
+      <div class="alert-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4.5 3.5 19h17z"/><path d="M12 10v4M12 16.6v.01"/></svg></div>
+      <p id="reqMsg">This home does not meet the current attendance area and high school grade requirements.</p>
+      <div class="alert-grades" id="reqGrades"></div>
+      <div class="alert-acts">
+        <button type="button" class="btn ghost" id="reqCancel">Cancel</button>
+        <button type="button" class="btn primary" id="reqAnyway">Add anyway</button>
+      </div>
+    </div>
+  </div>
+</section>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js"></script>
+<script src="script.js?v=20261003a"></script>
 </body>
 </html>
