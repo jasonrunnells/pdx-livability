@@ -690,3 +690,13 @@ html, body {
 /* Action buttons scroll with the content (no longer pinned) */
 .sheet .foot { position: static; box-shadow: none; border-top: 1px solid var(--line); margin: 14px 0 0; padding: 14px 0 0; background: none; }
 .sheet .body:has(.foot) { padding-bottom: calc(16px + var(--safe-bottom)); }
+
+/* Phones: peek <-> full-screen card. Peek doesn't scroll; full screen does (see explorer.js). */
+@media (max-width: 799px) {
+  .sheet:not(.full) .body { overflow-y: hidden; }
+  .sheet.full { height: 100vh; height: 100dvh; max-height: none; border-radius: 0; }
+  .sheet-top { transition: padding-top 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .sheet.full .sheet-top { padding-top: var(--safe-top); height: calc(40px + var(--safe-top)); box-sizing: border-box; }
+  .sheet.full .sheet-top .grab { top: calc(8px + var(--safe-top)); }
+  .sheet-top { touch-action: none; }
+}

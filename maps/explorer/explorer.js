@@ -698,6 +698,7 @@
   const sheet = document.querySelector('.sheet'), sheetBody = sheet.querySelector('.body');
   let sheetLock = false;   // true while editing, so map taps don't close the form
   function openSheet(html) {
+    if (!sheet.classList.contains('open')) { clearDrag(); setFull(false); }   // a new card always opens at peek height
     sheetLock = false; sheetBody.innerHTML = html; sheetBody.scrollTop = 0;
     sheet.classList.add('open'); sheet.setAttribute('aria-hidden', 'false'); document.body.classList.add('sheet-open');
     wireCard();
@@ -715,6 +716,7 @@
     const d = e.target;
     if (!(d instanceof HTMLDetailsElement) || !d.open || d !== userToggled) return;
     userToggled = null;
+    if (mobile.matches && !sheetFull) expandSheet();   // peek can't scroll, so go full screen to show it
     requestAnimationFrame(() => {
       const top = d.getBoundingClientRect().top - sheetBody.getBoundingClientRect().top + sheetBody.scrollTop - 2;
       sheetBody.scrollTo({ top, behavior: 'smooth' });
@@ -722,6 +724,88 @@
   }, true);
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
   new ResizeObserver(() => document.body.style.setProperty('--sh', sheet.offsetHeight + 'px')).observe(sheet);
+
+  /* ---------- Phone sheet: peek <-> full screen ----------
+     Peek = the height a card opens at; its content doesn't scroll.
+     Drag up -> full screen, where content scrolls normally.
+     At full screen, scrolling up stops at the top; a NEW pull down that starts at the top -> back to peek.
+     Pull down at peek -> close. The X and any map tap/drag close it from any state. */
+  let sheetFull = false;
+  const sheetTop = sheet.querySelector('.sheet-top');
+  const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+  function setFull(on) {
+    sheetFull = on; sheet.classList.toggle('full', on);
+    if (!on) sheetBody.scrollTop = 0;
+  }
+  function clearDrag() { sheet.style.height = sheet.style.maxHeight = sheet.style.transform = sheet.style.transition = ''; }
+  const peekHeight = () => Math.min(sheetTop.offsetHeight + sheetBody.scrollHeight, innerHeight * 0.68);
+  // Animate the sheet's height from where it is now to `to` px, then hand back to the CSS.
+  function animateHeight(to) {
+    const from = sheet.offsetHeight;
+    sheet.style.transition = 'none'; sheet.style.maxHeight = 'none'; sheet.style.transform = '';
+    sheet.style.height = from + 'px';
+    void sheet.offsetHeight;   // lock in the start height
+    sheet.style.transition = `height 0.32s ${EASE}, border-radius 0.32s ${EASE}`;
+    sheet.style.height = to + 'px';
+    clearTimeout(animateHeight.t);
+    animateHeight.t = setTimeout(clearDrag, 340);
+  }
+  function expandSheet() { setFull(true); animateHeight(innerHeight); }
+  function collapseSheet() { const from = sheet.offsetHeight; setFull(false); sheet.style.height = from + 'px'; animateHeight(peekHeight()); }
+  function snapBack() {
+    sheet.style.transition = `height 0.25s ${EASE}, transform 0.25s ${EASE}`;
+    sheet.style.transform = '';
+    if (sheet.style.height) sheet.style.height = (sheetFull ? innerHeight : peekHeight()) + 'px';
+    clearTimeout(animateHeight.t);
+    animateHeight.t = setTimeout(clearDrag, 270);
+  }
+  mobile.addEventListener('change', () => { clearDrag(); setFull(false); });
+
+  let drag = null;
+  sheet.addEventListener('touchstart', (e) => {
+    if (!mobile.matches || !sheet.classList.contains('open') || e.touches.length > 1) { drag = null; return; }
+    if (e.target.closest('.stars, input, textarea, select')) { drag = null; return; }
+    const t = e.touches[0];
+    drag = {
+      x0: t.clientX, y0: t.clientY, t0: e.timeStamp, h0: sheet.offsetHeight, mode: null,
+      // at full screen only a pull that STARTS at the top (or on the top bar) shrinks the card
+      fromTop: sheetBody.scrollTop <= 0 || !!e.target.closest('.sheet-top'),
+    };
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (!drag || drag.mode === 'none') return;
+    const t = e.touches[0], dx = t.clientX - drag.x0, dy = t.clientY - drag.y0;
+    if (!drag.mode) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dx) > Math.abs(dy)) { drag.mode = 'none'; return; }            // sideways: photos, charts
+      drag.mode = !sheetFull || (dy > 0 && drag.fromTop) ? 'sheet' : 'none';      // otherwise normal scrolling
+      if (drag.mode === 'none') return;
+      drag.y0 = t.clientY;   // start following from here, so the card doesn't jump
+      sheet.style.transition = 'none';
+      return;
+    }
+    e.preventDefault();
+    const d = t.clientY - drag.y0;
+    drag.dy = d;
+    if (!sheetFull && d > 0) { sheet.style.height = ''; sheet.style.transform = `translateY(${d}px)`; }   // pulling down to close
+    else {
+      sheet.style.transform = ''; sheet.style.maxHeight = 'none';
+      sheet.style.height = Math.max(120, Math.min(innerHeight, drag.h0 - d)) + 'px';
+    }
+  }, { passive: false });
+  sheet.addEventListener('touchend', (e) => {
+    const g = drag; drag = null;
+    if (!g || g.mode !== 'sheet') return;
+    const dy = g.dy || 0, v = dy / Math.max(1, e.timeStamp - g.t0);   // px per ms (+ = down)
+    if (sheetFull) {
+      if (dy > 70 || v > 0.5) collapseSheet(); else snapBack();
+    } else if (dy < 0) {
+      if (dy < -50 || v < -0.4) expandSheet(); else snapBack();
+    } else {
+      if (dy > 80 || v > 0.5) { clearDrag(); closeSheet(); } else snapBack();
+    }
+  });
+  sheet.addEventListener('touchcancel', () => { if (drag && drag.mode === 'sheet') snapBack(); drag = null; });
 
   /* ---------- Selection highlight ---------- */
   let selected = null;   // { kind: 'point' | 'area', key, id }
@@ -1113,6 +1197,7 @@
       <label class="pph">Add photos<input type="file" accept="image/*" multiple hidden></label><div class="pth"></div>
       <div class="perr"></div><button class="btn">Save</button></form>`);
     sheetLock = true; sheetBody.onclick = null;
+    if (mobile.matches && !sheetFull) expandSheet();   // forms need room to scroll
     const f = sheetBody.querySelector('form'), btn = f.querySelector('.btn'), th = f.querySelector('.pth'), err = f.querySelector('.perr');
     const gv = (n) => f.elements[n]?.value.trim() || '';
     const thumbs = () => { th.innerHTML = [...pics.map((u, i) => `<img data-p="${i}" src="${esc(u)}">`), ...files.map((x, i) => `<img data-f="${i}" src="${URL.createObjectURL(x)}">`)].join(''); };
