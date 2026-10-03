@@ -700,3 +700,23 @@ html, body {
   .sheet.full .sheet-top .grab { top: calc(8px + var(--safe-top)); }
   .sheet-top { touch-action: none; }
 }
+
+/* Home card at full screen: the button bar slides up, sticks to the bottom, and content scrolls behind frosted glass.
+   On the way back to peek it slides down again (.foot-down, set briefly by explorer.js). */
+@media (max-width: 799px) {
+  .sheet.full[data-kind="home"] .body,
+  .sheet.foot-down[data-kind="home"] .body { padding-bottom: 0; }
+  .sheet.full[data-kind="home"] .foot,
+  .sheet.foot-down[data-kind="home"] .foot {
+    position: sticky; bottom: 0; z-index: 3;
+    margin: 14px -18px 0; padding: 12px 18px calc(12px + var(--safe-bottom));
+    background: color-mix(in srgb, var(--surface-solid) 68%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
+    border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+    box-shadow: 0 -6px 18px -12px rgba(0, 0, 0, 0.28);
+  }
+  .sheet.full[data-kind="home"] .foot { animation: foot-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .sheet.foot-down[data-kind="home"] .foot { animation: foot-down 0.3s ease-in both; }
+}
+@keyframes foot-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes foot-down { from { transform: none; } to { transform: translateY(110%); } }

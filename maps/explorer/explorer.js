@@ -163,10 +163,11 @@
     { key: 'tracts', name: 'Census tracts', desc: 'Income, rent & who lives there',           color: 'tract', file: 'data/census.geojson' },
     { key: 'cities', name: 'Cities', desc: 'City limits',                  color: 'city',  file: 'data/cities.geojson' },
     { key: 'sas',    name: 'School attendance areas', desc: 'Assigned schools & grades', color: 'sas',   file: 'data/schoolAttendanceAreas.geojson' },
-    // Places (points). Restaurants use the older file because it has names; the current one only has IDs.
+    // Places (points). Restaurants use a copy of the older file (it has names; the current one only has IDs).
+    // It can't load from data/_OLD: GitHub Pages skips folders that start with an underscore.
     { key: 'pSchools', group: 'places', name: 'Schools', desc: 'Grades & test scores',         color: 'pSchool',  file: 'data/schools.geojson',          label: 'Label_Name' },
     { key: 'pGrocery', group: 'places', name: 'Grocery stores', desc: 'Where to shop',  color: 'pGrocery', file: 'data/groceryStores.geojson',    label: 'Name' },
-    { key: 'pFood',    group: 'places', name: 'Restaurants', desc: 'Saved restaurants',     color: 'pFood',    file: 'data/_OLD/restaurants.geojson', label: 'USER_NAME' },
+    { key: 'pFood',    group: 'places', name: 'Restaurants', desc: 'Saved restaurants',     color: 'pFood',    file: 'data/restaurants_named.geojson', label: 'USER_NAME' },
     // Homes saved from the home page (Supabase "places" table, kind = home)
     { key: 'pHomes',   group: 'places', name: 'Homes', desc: 'Your saved homes',           color: 'pHome',    load: loadHomes,                       label: 'address' },
   ];
@@ -697,8 +698,11 @@
     '<section class="sheet" aria-hidden="true"><div class="sheet-top"><div class="grab"></div><button class="x" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div><div class="body"></div></section>');
   const sheet = document.querySelector('.sheet'), sheetBody = sheet.querySelector('.body');
   let sheetLock = false;   // true while editing, so map taps don't close the form
-  function openSheet(html) {
-    if (!sheet.classList.contains('open')) { clearDrag(); setFull(false); }   // a new card always opens at peek height
+  function openSheet(html, opts = {}) {
+    if (!sheet.classList.contains('open')) { clearDrag(); setFull(false); }
+    sheet.dataset.kind = opts.kind || '';
+    sheet.classList.toggle('nofull', !!opts.noFull);
+    if (opts.noFull && sheetFull) { clearDrag(); setFull(false); }   // a new card always opens at peek height
     sheetLock = false; sheetBody.innerHTML = html; sheetBody.scrollTop = 0;
     sheet.classList.add('open'); sheet.setAttribute('aria-hidden', 'false'); document.body.classList.add('sheet-open');
     wireCard();
@@ -716,7 +720,7 @@
     const d = e.target;
     if (!(d instanceof HTMLDetailsElement) || !d.open || d !== userToggled) return;
     userToggled = null;
-    if (mobile.matches && !sheetFull) expandSheet();   // peek can't scroll, so go full screen to show it
+    if (mobile.matches && !sheetFull && !sheet.classList.contains('nofull')) expandSheet();   // peek can't scroll, so go full screen to show it
     requestAnimationFrame(() => {
       const top = d.getBoundingClientRect().top - sheetBody.getBoundingClientRect().top + sheetBody.scrollTop - 2;
       sheetBody.scrollTo({ top, behavior: 'smooth' });
@@ -751,7 +755,14 @@
     animateHeight.t = setTimeout(clearDrag, 340);
   }
   function expandSheet() { setFull(true); animateHeight(innerHeight); }
-  function collapseSheet() { const from = sheet.offsetHeight; setFull(false); sheet.style.height = from + 'px'; animateHeight(peekHeight()); }
+  function collapseSheet() {
+    const from = sheet.offsetHeight;
+    if (sheet.dataset.kind === 'home') {   // home buttons ride back down with the card
+      sheet.classList.add('foot-down');
+      clearTimeout(collapseSheet.t); collapseSheet.t = setTimeout(() => sheet.classList.remove('foot-down'), 340);
+    }
+    setFull(false); sheet.style.height = from + 'px'; animateHeight(peekHeight());
+  }
   function snapBack() {
     sheet.style.transition = `height 0.25s ${EASE}, transform 0.25s ${EASE}`;
     sheet.style.transform = '';
@@ -779,6 +790,7 @@
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
       if (Math.abs(dx) > Math.abs(dy)) { drag.mode = 'none'; return; }            // sideways: photos, charts
       drag.mode = !sheetFull || (dy > 0 && drag.fromTop) ? 'sheet' : 'none';      // otherwise normal scrolling
+      if (!sheetFull && dy < 0 && sheet.classList.contains('nofull')) drag.mode = 'none';   // small cards: pull down to close only
       if (drag.mode === 'none') return;
       drag.y0 = t.clientY;   // start following from here, so the card doesn't jump
       sheet.style.transition = 'none';
@@ -879,11 +891,11 @@
     return `<div class="sec"><h2>${esc(p.Name)}</h2><div class="sub">${esc(title(p.City))} · ${esc(p.County)} County</div></div>
     <div class="sec"><div class="price-row"><div class="big">${usd(now)}</div>${starsHTML(`data-region="${esc(p.RegionID)}"`)}</div><div class="sub">Typical home value (Zillow${when ? ', ' + when : ''})</div>
     <div class="pills"><div class="pill">${change(now, yearAgo)}<span>Past year</span></div><div class="pill">${change(now, fiveAgo)}<span>Past 5 years</span></div></div>${chart(h)}</div>
-    ${t ? `<div class="sec"><details><summary>Census estimates</summary><div class="grid">${stat('Median home value', usd(t.HOMEVAL_ME))}${stat('Median rent', usd(t.RENT_MED))}${stat('Monthly mortgage', usd(t.MORT_COST_))}${stat('Yearly property tax', usd(t.MORT_TAX_M))}${stat('Typical year built', t.YR_BUILT_M ? Math.round(t.YR_BUILT_M) : '–')}${stat('Household income', usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details></div>` : ''}`;
+    ${t ? `<div class="sec"><details open><summary>Census estimates</summary><div class="grid">${stat('Median home value', usd(t.HOMEVAL_ME))}${stat('Median rent', usd(t.RENT_MED))}${stat('Monthly mortgage', usd(t.MORT_COST_))}${stat('Yearly property tax', usd(t.MORT_TAX_M))}${stat('Typical year built', t.YR_BUILT_M ? Math.round(t.YR_BUILT_M) : '–')}${stat('Household income', usd(t.INC_HH_MED))}</div><div class="sub">Averaged across the census tracts that cover this neighborhood, so treat as approximate.</div></details></div>` : ''}`;
   }
   function tractSchools(p) {
     const rows = [['Reading', 'English_La', 'Oregon_ELA'], ['Math', 'Mathematic', 'Oregon_Mat'], ['Science', 'Science', 'Oregon_Sci']].filter(([, k]) => +p[k] > 0);
-    return `<details><summary>Schools</summary>${rows.length ? `<div class="grid">${rows.map(([l, k, o]) => meter(l, +p[k], +p[o] || 0)).join('')}</div><div class="sub">Test scores show the share of students meeting standards.</div>` : '<div class="sub" style="padding-bottom:8px">No school data for this tract.</div>'}</details>`;
+    return `<details open><summary>Schools</summary>${rows.length ? `<div class="grid">${rows.map(([l, k, o]) => meter(l, +p[k], +p[o] || 0)).join('')}</div><div class="sub">Test scores show the share of students meeting standards.</div>` : '<div class="sub" style="padding-bottom:8px">No school data for this tract.</div>'}</details>`;
   }
   function tractCard(p) {
     const gk = Object.keys(p).find((k) => /^[A-F][+-]?$/.test(p[k] || '') && !/FUNC/i.test(k)), own = num(p.OWN_OCC_PC) ?? 0, rent = num(p.RENT_OCC_P) ?? 0;
@@ -892,19 +904,20 @@
     <div class="big">${usd(p.INC_HH_MED)}</div><div class="sub">Median household income</div>
     <div class="grid">${stat('Median home value', usd(p.HOMEVAL_ME))}${stat('Median rent', usd(p.RENT_MED))}${stat('Monthly mortgage', usd(p.MORT_COST_))}${stat('Yearly property tax', usd(p.MORT_TAX_M))}
     ${gk ? `<div class="stat wide"><span>Niche grade</span><b>${esc(p[gk])}</b></div>` : ''}<div class="stat wide"><span>Own vs. rent</span><div class="bar"><i style="width:${own}%"></i><i style="width:${rent}%"></i></div><div class="key"><span>Own ${pct(own)}</span><span>Rent ${pct(rent)}</span></div></div></div>
-    <details><summary>Demographics</summary><div class="grid">${stat('Under 18', pct(p.AGE_U18_PC))}${stat('65 and older', pct(p.AGE_65P_PC))}<div class="stat wide"><span>Bachelor's degree or higher</span><div class="bar"><i style="width:${num(p.EDU_BA_PCT) ?? 0}%"></i></div><div class="key"><span>${pct(p.EDU_BA_PCT)}</span><span>Poverty ${pct(p.INC_POV_PC)}</span></div></div></div></details>
+    <details open><summary>Demographics</summary><div class="grid">${stat('Under 18', pct(p.AGE_U18_PC))}${stat('65 and older', pct(p.AGE_65P_PC))}<div class="stat wide"><span>Bachelor's degree or higher</span><div class="bar"><i style="width:${num(p.EDU_BA_PCT) ?? 0}%"></i></div><div class="key"><span>${pct(p.EDU_BA_PCT)}</span><span>Poverty ${pct(p.INC_POV_PC)}</span></div></div></div></details>
     ${tractSchools(p)}
-    ${zones.length ? `<details><summary>Land use</summary><div class="grid">${zones.map(([n, k]) => stat(n, pct(p[k]))).join('')}</div></details>` : ''}`;
+    ${zones.length ? `<details open><summary>Land use</summary><div class="grid">${zones.map(([n, k]) => stat(n, pct(p[k]))).join('')}</div></details>` : ''}`;
   }
   const cityCard = (p) => { const t = String(p.NAMELSAD || '').replace(p.NAME, '').trim(); return `<h2>${esc(p.NAME)}</h2><div class="sub">${t === 'CDP' ? 'Census-designated place' : esc(title(t) || 'City')}</div>`; };
-  function sasCard(p) {
-    const g = (k) => p['SchoolAttendanceAreas_Clipped.' + k], q = (k) => num(p['SAA_with_percentiles.csv.' + k]);
-    const rows = [['Elementary', g('Grade_1_Choice1_Name'), q('ES_Percentile')], ['Middle', g('Grade_6_Choice1_Name'), q('MS_Percentile')], ['High', g('Grade_10_Choice1_Name'), q('HS_Percentile')]].filter((r) => r[1]);
-    const url = g('SD_Catchment_URL') || g('Unified_SD_URL');
-    return `<h2>${esc(g('Grade_1_Choice1_Name') || 'School attendance area')}</h2><div class="sub">${esc(g('Unified_SD_Name') || '')}</div>
-    <div class="grid">${rows.map(([lvl, name, pc]) => `<div class="stat wide"><div class="key" style="font-size:15px;color:var(--ink)"><span>${esc(name)}</span><b>${pc != null ? Math.round(pc) + 'th pct' : ''}</b></div>${pc != null ? `<div class="meter"><div class="bar"><i style="width:${pc}%"></i></div></div>` : ''}<div class="key"><span>${lvl}</span></div></div>`).join('')}</div>
-    <div class="sub">Percentile compares test scores with other schools in the area (higher is better).</div>
-`;
+  async function sasCard(p) {
+    const sa = await schoolsFor(p);
+    const pc = (v) => (num(v) == null ? null : Math.round(v * 10) / 10);
+    const mean = pc(sa.mean);
+    return `<div class="sec"><h2>${esc(sa.district || 'School attendance area')}</h2><div class="sub">School attendance area</div>
+    <div class="grid"><div class="stat"><span>Area grade</span><b>${gradeBadge(sa.grade)}</b></div>${stat('Area average', mean != null ? mean + '%' : '–')}</div></div>
+    <div class="sec"><div class="grid">${sa.schools.map(({ level, name, pctl, s }) => { const v = pc(pctl); return `<div class="stat wide">
+      <div class="key" style="font-size:15px;color:var(--ink);align-items:center;gap:8px"><span>${esc(name)}</span><b style="display:inline-flex;align-items:center;gap:8px;flex:none">${v != null ? v + '%' : '–'}${gradeBadge(s?.GRADE_1)}</b></div>
+      ${v != null ? `<div class="meter"><div class="bar"><i style="width:${v}%"></i></div></div>` : ''}<div class="key"><span>${level}</span></div></div>`; }).join('')}</div></div>`;
   }
 
   /* ---------- Cards: places ---------- */
@@ -979,8 +992,12 @@
   // Schools for a location: its attendance area + the three assigned schools
   const normName = (v) => String(v || '').toLowerCase().replace(/&/g, 'and').replace(/\b(school|sch)\b/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   async function schoolsAt(lng, lat) {
-    const [areas, schools] = await Promise.all([getJSON('data/schoolAttendanceAreas.geojson').catch(() => null), getJSON('data/schools.geojson').catch(() => null)]);
-    const a = areas && featureAt(areas, lng, lat); if (!a) return null;
+    const areas = await getJSON('data/schoolAttendanceAreas.geojson').catch(() => null);
+    const a = areas && featureAt(areas, lng, lat);
+    return a ? schoolsFor(a) : null;
+  }
+  async function schoolsFor(a) {   // a = attendance-area properties
+    const schools = await getJSON('data/schools.geojson').catch(() => null);
     const g = (k) => a['SchoolAttendanceAreas_Clipped.' + k], q = (k) => a['SAA_with_percentiles.csv.' + k];
     // Match a school by name, but only among schools of the right level (and prefer the same district),
     // so e.g. "Lincoln" (a high school) never matches "Lincoln Park Elementary".
@@ -1107,9 +1124,9 @@
       <div class="facts"><div><span>Beds</span><b>${esc(r.beds ?? '–')}</b></div><div><span>Baths</span><b>${esc(r.baths ?? '–')}</b></div><div><span>Sq ft</span><b>${r.sqft ? r.sqft.toLocaleString() : '–'}</b></div></div>
       ${schoolStrip(sa)}</div>
     ${(photos.length || r.note) ? `<div class="sec">${photos.length ? `<div class="photowrap"><div class="photos">${photos.map((u) => `<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${photos.length > 1 ? '<button type="button" class="parrow prev" aria-label="Previous photo">&#8249;</button><button type="button" class="parrow next" aria-label="Next photo">&#8250;</button>' : ''}</div>` : ''}${r.note ? `<button type="button" class="note clamp" aria-expanded="false">${esc(r.note)}</button>` : ''}</div>` : ''}
-    <details class="sec" data-sec="property"><summary>Property</summary><div class="prop-body"><div class="sub pad">Loading…</div></div></details>
-    <details class="sec"><summary>Schools</summary>${schoolsHTML(sa)}</details>
-    ${EXTRAS}
+    <details class="sec" data-sec="property" open><summary>Property</summary><div class="prop-body"><div class="sub pad">Loading…</div></div></details>
+    <details class="sec" open><summary>Schools</summary>${schoolsHTML(sa)}</details>
+    ${EXTRAS.replaceAll('<details class="sec">', '<details class="sec" open>')}
     <div class="foot"><div class="pills two">${dirs([r.lng, r.lat])}${r.link ? `<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">Open listing</a>` : ''}</div>
     <div class="acts"><button data-act="visit">${r.visited ? 'Undo visited' : 'Mark visited'}</button><button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>` };
   }
@@ -1135,7 +1152,7 @@
     const sa = await schoolsAt(r.lng, r.lat);
     const { html, hood } = await homeCard(r, sa);
     if (token !== openToken) return;
-    openSheet(html);
+    openSheet(html, { kind: 'home' });
     sheetBody.onclick = (e) => homeAction(e, id);
     fillProperty([r.lng, r.lat], hood, token, { listPrice: num(r.price), homeSqft: num(r.sqft) });
     fillExtras([r.lng, r.lat], token);
@@ -1278,7 +1295,7 @@
     if (key === 'pGrocery') html = placeCard(p.Name, [p.Address, p.City].filter(Boolean).join(', '), ll, p.Notes ? `<div class="note">${esc(p.Notes)}</div>` : '');
     else if (key === 'pFood') html = placeCard(p.USER_NAME, [p.USER_CATEGORY, p.USER_ADDRESS].filter(Boolean).join(' · '), ll);
     else if (key === 'pSchools') html = schoolCard(p, ll);
-    openSheet(html); sheetBody.onclick = null;
+    openSheet(html, { noFull: key !== 'pSchools' }); sheetBody.onclick = null;
     revealPoint(ll);
   }
   async function openArea(key, f, ll) {
@@ -1293,8 +1310,8 @@
       const html = await hoodCard(p, full, ll);
       if (selected && selected.key === key && selected.id === f.id) { openSheet(html); if (mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 }); }
     } else if (key === 'tracts') openSheet(tractCard(p));
-    else if (key === 'cities') openSheet(cityCard(p));
-    else if (key === 'sas') openSheet(sasCard(p));
+    else if (key === 'cities') openSheet(cityCard(p), { noFull: true });
+    else if (key === 'sas') { const html = await sasCard(p); if (selected && selected.key === key && selected.id === f.id) openSheet(html); }
     const shape = key === 'hoods' ? null : f;   // neighborhoods fit themselves below
     if (shape && mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 });
   }
