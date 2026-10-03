@@ -710,8 +710,8 @@ html, body {
   .sheet.foot-down[data-kind="home"] .foot {
     position: sticky; bottom: 0; z-index: 3;
     margin: 14px -18px 0; padding: 12px 18px calc(12px + var(--safe-bottom));
-    background: color-mix(in srgb, var(--surface-solid) 68%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(1.8); backdrop-filter: blur(18px) saturate(1.8);
+    background: color-mix(in srgb, var(--surface-solid) 55%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8);
     border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
     box-shadow: 0 -6px 18px -12px rgba(0, 0, 0, 0.28);
   }
@@ -720,3 +720,230 @@ html, body {
 }
 @keyframes foot-up { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes foot-down { from { transform: none; } to { transform: translateY(110%); } }
+
+/* Desktop: on any card with expandable sections (home, lot, school), the button bar is always pinned to the bottom
+   and content scrolls behind the same frosted glass */
+@media (min-width: 800px) {
+  .sheet .body:has(details):has(.foot) { padding-bottom: 0; }
+  .sheet .body:has(details) .foot {
+    position: sticky; bottom: 0; z-index: 3;
+    margin: 14px -18px 0; padding: 12px 18px 14px;
+    background: color-mix(in srgb, var(--surface-solid) 55%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8);
+    border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+    box-shadow: 0 -6px 18px -12px rgba(0, 0, 0, 0.28);
+  }
+}
+
+/* ---------- Search ---------- */
+.fab-search {
+  top: calc(var(--safe-top) + var(--gap));
+  left: calc(var(--safe-left) + var(--btn) + 2 * var(--gap));
+  border: 0; padding: 0; cursor: pointer; font: inherit;
+}
+.fab-search[hidden] { display: none; }
+.fab-search svg, .search-bar > svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.search {
+  position: fixed; z-index: 7;
+  top: calc(var(--safe-top) + var(--gap));
+  left: calc(var(--safe-left) + var(--btn) + 2 * var(--gap));
+  right: calc(var(--safe-right) + var(--btn) + 2 * var(--gap));
+  max-width: 440px;
+  font-family: var(--font);
+  animation: lp-in 0.16s ease-out;
+}
+.search[hidden] { display: none; }
+.search-bar {
+  display: flex; align-items: center; gap: 8px;
+  height: var(--btn); padding: 0 4px 0 12px;
+  border-radius: var(--radius);
+  background: var(--surface-solid); color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08), 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+.search-bar > svg { flex: none; width: 19px; height: 19px; color: var(--ink-soft); }
+.search-bar input {
+  flex: 1; min-width: 0; height: 100%; padding: 0;
+  border: 0; outline: 0; background: transparent; color: var(--ink);
+  font: inherit; font-size: 16px;   /* 16px keeps iPhones from zooming in */
+}
+.search-bar input::-webkit-search-cancel-button { display: none; }
+.search-bar input::placeholder { color: var(--ink-soft); }
+.search-x {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px;
+  border: 0; border-radius: 50%; background: transparent; color: var(--ink-soft); cursor: pointer; visibility: hidden;
+}
+.search-x svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.search-x:hover { background: var(--line); color: var(--ink); }
+.search-list:not(:empty) {
+  margin-top: 8px; padding: 6px;
+  max-height: min(60vh, 460px); max-height: min(60dvh, 460px); overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 16px; background: var(--surface-solid); border: 1px solid var(--line);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08), 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+.search-item {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 8px; border: 0; border-radius: 10px; background: transparent;
+  color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.search-item:hover, .search-item:focus-visible { background: var(--bg2); outline: 0; }
+.search-item img { flex: none; width: 30px; height: 30px; margin: -2px; }
+.si-area { flex: none; width: 24px; height: 24px; margin: 1px; border-radius: 7px; border: 2.5px solid var(--sw); background: color-mix(in srgb, var(--sw) 16%, transparent); box-sizing: border-box; }
+.si-pin { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--bg2); color: var(--ink-soft); }
+.si-pin svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.si-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.si-text b { font-size: 15px; font-weight: 650; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.si-text small { font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-empty { padding: 10px 8px; font-size: 14px; color: var(--ink-soft); }
+
+/* ==========================================================================
+   Map buttons, unified: one size, one surface, one icon style
+   (22px line icons, 1.9px stroke, round caps) for home, search, zoom, compass, locate and layers.
+   ========================================================================== */
+:root { --ctl-bg: rgba(255, 255, 255, 0.92); --ctl-ink: #2A2E33; --ctl-border: rgba(0, 0, 0, 0.07);
+         --ctl-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 3px 10px rgba(0, 0, 0, 0.08); --ctl-hover: rgba(0, 0, 0, 0.045); }
+@media (prefers-color-scheme: dark) {
+  :root { --ctl-bg: rgba(40, 44, 48, 0.92); --ctl-ink: #E8EAED; --ctl-border: rgba(255, 255, 255, 0.08);
+           --ctl-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 3px 12px rgba(0, 0, 0, 0.3); --ctl-hover: rgba(255, 255, 255, 0.07); }
+}
+.fab, .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
+  background: var(--ctl-bg); color: var(--ctl-ink);
+  border: 1px solid var(--ctl-border); border-radius: 12px; box-shadow: var(--ctl-shadow);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px); backdrop-filter: saturate(1.6) blur(14px);
+  box-sizing: border-box;
+}
+.fab { width: var(--btn); height: var(--btn); padding: 0; cursor: pointer; transition: background 0.15s, transform 0.12s; }
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: calc(var(--btn) - 2px); height: calc(var(--btn) - 2px); display: grid; place-items: center; }
+.maplibregl-ctrl-top-right .maplibregl-ctrl { margin: var(--gap) var(--gap) 0 0; }
+.maplibregl-ctrl-group button + button { border-top: 1px solid var(--ctl-border); }
+@media (hover: hover) {
+  .maplibregl-ctrl-top-right .maplibregl-ctrl-group button:not(:disabled):hover { background-color: var(--ctl-hover); }
+  .fab:hover { box-shadow: var(--ctl-shadow), inset 0 0 0 100px var(--ctl-hover); }
+}
+.fab:active { transform: scale(0.95); }
+/* inline icons (home, search, layers) */
+.fab svg.ic, .layers-btn svg.ic, .search-bar > svg.ic {
+  display: block; width: 22px; height: 22px;
+  fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.layers-btn { color: var(--ctl-ink); }
+.layers-btn[aria-expanded="true"] { color: var(--accent); }
+.search-bar > svg.ic { width: 20px; height: 20px; color: var(--ink-soft); }
+/* MapLibre's own icons, redrawn to match (masks take the text color, so no invert filters needed) */
+.maplibregl-ctrl-top-right .maplibregl-ctrl button .maplibregl-ctrl-icon {
+  width: 22px; height: 22px; filter: none !important;
+  background-image: none !important; background-color: var(--ctl-ink);
+  -webkit-mask: var(--ico) center / 22px 22px no-repeat; mask: var(--ico) center / 22px 22px no-repeat;
+}
+.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon { --ico: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.9%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 5.75v12.5M5.75 12h12.5%22/%3E%3C/svg%3E"); }
+.maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon { --ico: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.9%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M5.75 12h12.5%22/%3E%3C/svg%3E"); }
+.maplibregl-ctrl-geolocate .maplibregl-ctrl-icon { --ico: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.9%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M19.25 4.75 4.75 10.9l6.35 2 2 6.35z%22/%3E%3C/svg%3E"); }
+.maplibregl-ctrl button.maplibregl-ctrl-geolocate-active .maplibregl-ctrl-icon { --ico: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.9%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M19.25 4.75 4.75 10.9l6.35 2 2 6.35z%22 fill=%22%23000%22/%3E%3C/svg%3E"); background-color: var(--accent); }
+.maplibregl-ctrl button.maplibregl-ctrl-geolocate-background .maplibregl-ctrl-icon { background-color: var(--accent); }
+.maplibregl-ctrl button.maplibregl-ctrl-geolocate-active-error .maplibregl-ctrl-icon,
+.maplibregl-ctrl button.maplibregl-ctrl-geolocate-background-error .maplibregl-ctrl-icon { background-color: #E5484D; }
+.maplibregl-ctrl button:disabled .maplibregl-ctrl-icon { opacity: 0.35; }
+/* compass keeps its two colors (red = north) */
+.maplibregl-ctrl-top-right .maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon {
+  width: 24px; height: 24px; -webkit-mask: none; mask: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12 3.75 15.4 12H8.6z%22 fill=%22%23E5484D%22/%3E%3Cpath d=%22M12 20.25 8.6 12h6.8z%22 fill=%22%239AA0A6%22/%3E%3C/svg%3E") center / 24px 24px no-repeat !important;
+}
+@media (prefers-color-scheme: dark) {
+  .maplibregl-ctrl-top-right .maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon { background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12 3.75 15.4 12H8.6z%22 fill=%22%23FF6B6B%22/%3E%3Cpath d=%22M12 20.25 8.6 12h6.8z%22 fill=%22%236B7177%22/%3E%3C/svg%3E") !important; }
+}
+/* search bar matches the buttons */
+.search-bar { border-radius: 12px; border: 1px solid var(--ctl-border); box-shadow: var(--ctl-shadow); background: var(--surface-solid); }
+
+/* Grade badges: solid color with white letter, readable on gray tiles in light and dark mode */
+.sheet .grade { font-weight: 800; color: var(--ink-soft); background: var(--surface-solid); box-shadow: inset 0 0 0 1px var(--line); }
+.sheet .grade[class*="g-"] { color: #FFFFFF; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18); }
+.sheet .grade.g-a { background: #1E8E4E; }
+.sheet .grade.g-b { background: #4F8A1F; }
+.sheet .grade.g-c { background: #B7791F; }
+.sheet .grade.g-d { background: #C9541C; }
+.sheet .grade.g-f { background: #CC3333; }
+@media (prefers-color-scheme: dark) {
+  .sheet .grade.g-a { background: #22A05A; color: #FFFFFF; }
+  .sheet .grade.g-b { background: #5C9E25; color: #FFFFFF; }
+  .sheet .grade.g-c { background: #C98A22; color: #FFFFFF; }
+  .sheet .grade.g-d { background: #D8622A; color: #FFFFFF; }
+  .sheet .grade.g-f { background: #DD4444; color: #FFFFFF; }
+}
+/* Grade badges: bigger, crisper letter */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade {
+  min-width: 30px; height: 26px; padding: 0 7px; border-radius: 8px;
+  font-size: 15.5px; font-weight: 800; line-height: 1; letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+}
+.sheet .grade[class*="g-"] { text-shadow: none; }
+/* Grade badges, final: a true circle with the letter optically centered */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  box-sizing: border-box; width: 26px; min-width: 26px; height: 26px; padding: 0 0 1px; border-radius: 50%;
+  font-family: var(--font); font-size: 14px; font-weight: 700; line-height: 1; letter-spacing: 0;
+  font-variant-numeric: normal; text-transform: uppercase;
+}
+/* Grade badges, v4: rounded square that echoes the card's tiles; sized to the value text so rows line up */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade {
+  width: 22px; min-width: 22px; height: 22px; padding: 0; border-radius: 6px;
+  font-size: 13px; font-weight: 700;
+}
+/* tiles: same breathing room between label and value in every tile */
+.sheet .facts > div { gap: 5px; }
+.sheet .facts.schools b { min-height: 22px; gap: 10px; }
+/* Grade letter centering: trim the font's built-in space above/below capitals so the letter sits truly centered
+   (fonts reserve room for accents and descenders, which pushes a lone capital low). */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade {
+  padding: 0; line-height: 1; text-indent: 0; letter-spacing: 0;
+  text-box: trim-both cap alphabetic;
+}
+@supports not (text-box: trim-both cap alphabetic) {
+  .sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade { padding-bottom: 1.5px; }
+}
+/* Grade letters drawn as SVG lines (see gradeBadge in explorer.js) */
+.sheet .grade svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+.sheet .grade:has(svg) { text-box: normal; padding: 0; }
+/* Grade letter: pin the drawing to the badge's exact box, so padding, line height or font settings can't move it */
+.sheet .grade:has(svg), .sheet .facts.schools .grade:has(svg), .sheet .schoolrow .grade:has(svg) { position: relative; padding: 0; font-size: 0; line-height: 0; text-box: normal; }
+.sheet .grade > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* Grade letter (back to the regular font), centered: the font's extra space above and below capitals is trimmed,
+   so the box is exactly the letter's height and flex centering puts it dead center. */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade {
+  position: static; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; font-size: 13px; font-weight: 700; line-height: 1;
+  text-box: trim-both cap alphabetic;
+}
+@supports not (text-box: trim-both cap alphabetic) {
+  .sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade { padding-bottom: 1px; }
+}
+/* the trim must sit on the letter's own box (the flex item), not the badge */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade { text-box: normal; }
+.sheet .grade > i { display: block; font-style: normal; line-height: 1; text-box: trim-both cap alphabetic; }
+/* Grade letter, measured centering (see gradeNudge in explorer.js): plain 22px line, letter shifted by --grade-dy */
+.sheet .grade, .sheet .facts.schools .grade, .sheet .schoolrow .grade {
+  display: inline-block; vertical-align: middle; height: 22px; line-height: 22px; padding: 0;
+  text-align: center; font-size: 13px; font-weight: 700; text-box: normal;
+}
+.sheet .grade > i { display: inline; position: relative; top: var(--grade-dy, 0px); font-style: normal; line-height: inherit; text-box: normal; }
+/* Grade colors tuned to the map's palette: A = the teal-green of the listing button, F = the app's red,
+   with an even step through green, gold and orange in between */
+.sheet .grade.g-a { background: #0F9D76; }
+.sheet .grade.g-b { background: #4E9F5C; }
+.sheet .grade.g-c { background: #C99117; }
+.sheet .grade.g-d { background: #DE7134; }
+.sheet .grade.g-f { background: #D64545; }
+@media (prefers-color-scheme: dark) {
+  .sheet .grade.g-a { background: #14B88A; }
+  .sheet .grade.g-b { background: #5AB36A; }
+  .sheet .grade.g-c { background: #D9A22F; }
+  .sheet .grade.g-d { background: #E9814A; }
+  .sheet .grade.g-f { background: #E35A5A; }
+}
+/* grade badge inside a stat tile: keep the tile's value row the same height as the others */
+.sheet .stat b .grade { margin-top: 1px; }
+/* Oregon-average marker on score bars: white tick with a dark outline, readable on the blue fill and the gray track */
+.sheet .meter u {
+  top: -4px; bottom: -4px; width: 4px; margin-left: -2px; border-radius: 2px;
+  background: #FFFFFF; box-shadow: 0 0 0 1.5px var(--ink), 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+@media (prefers-color-scheme: dark) { .sheet .meter u { background: var(--ink); box-shadow: 0 0 0 1.5px var(--surface-solid), 0 1px 3px rgba(0, 0, 0, 0.5); } }

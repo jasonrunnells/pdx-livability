@@ -580,7 +580,7 @@
       wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group layers-ctrl';
       wrap.innerHTML = `
         <button type="button" class="layers-btn" aria-label="Map layers" aria-expanded="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 8.5 12 14l10-5.5L12 3Zm-7.6 9.3L2 13.6 12 19l10-5.4-2.4-1.3L12 16.4l-7.6-4.1Z"/></svg>
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.75 3.75 9.1 12 13.45l8.25-4.35z"/><path d="m3.75 13.4 8.25 4.35 8.25-4.35"/></svg>
         </button>`;
       const panel = document.createElement('div');
       panel.className = 'layers-panel'; panel.hidden = true;
@@ -927,7 +927,7 @@
     const type = { ES: 'Elementary', MS: 'Middle', HS: 'High' }[p.School_Type] || '';
     const sub = [p.GRADE ? 'Grades ' + p.GRADE : type, p.TYPE, p.DISTRICT ? p.DISTRICT + ' SD' : null].filter(Boolean).join(' · ');
     return `<div class="sec"><h2>${esc(p.Label_Name)}</h2><div class="sub">${esc(sub)}</div><div class="sub">${esc(title([p.ADDRESS, p.CITY].filter(Boolean).join(', ')))}</div></div>
-    ${(p.GRADE_1 || num(p.Mean_Percentile) != null) ? `<div class="sec"><div class="grid">${p.GRADE_1 ? stat('Grade', esc(p.GRADE_1)) : ''}${num(p.Mean_Percentile) != null ? stat('Overall percentile', Math.round(p.Mean_Percentile)) : ''}</div></div>` : ''}
+    ${(p.GRADE_1 || num(p.Mean_Percentile) != null) ? `<div class="sec"><div class="grid">${p.GRADE_1 ? stat('Grade', gradeBadge(p.GRADE_1)) : ''}${num(p.Mean_Percentile) != null ? stat('Overall percentile', Math.round(p.Mean_Percentile) + '%') : ''}</div></div>` : ''}
     ${rows.length ? `<div class="sec"><details open><summary>Test scores</summary><div class="grid">${rows.map(([l, k, o]) => meter(l, +p[k], num(p[o]) || 0)).join('')}</div><div class="sub">Share of students meeting standards.</div></details></div>` : ''}
     <div class="foot">${dirs(ll)}</div>`;
   }
@@ -945,7 +945,22 @@
   };
   const sqft = (v) => (num(v) ? Math.round(v).toLocaleString() + ' sq ft' : '–');
   const kv = (rows) => `<table class="kv">${rows.filter((r) => r[1] != null && r[1] !== '' && r[1] !== '–').map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>`;
-  const gradeBadge = (g) => (g ? `<span class="grade g-${esc(String(g)[0]).toLowerCase()}">${esc(g)}</span>` : '<span class="grade">–</span>');
+  const gradeBadge = (g) => {
+    const L = String(g || '').trim().toUpperCase()[0];
+    return L ? `<span class="grade g-${esc(L).toLowerCase()}"><i>${esc(L)}</i></span>` : '<span class="grade">–</span>';
+  };
+  // Center the grade letter exactly: measure this device's font (where its capitals actually sit inside a line)
+  // and store the nudge as --grade-dy. Works with whatever system font the phone or computer uses.
+  (function gradeNudge() {
+    try {
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = `700 13px ${getComputedStyle(sheet).fontFamily}`;
+      const m = ctx.measureText('B'), fa = m.fontBoundingBoxAscent, fd = m.fontBoundingBoxDescent, cap = m.actualBoundingBoxAscent;
+      if (!(fa > 0 && fd >= 0 && cap > 0)) return;
+      const H = 22, baseline = (H - (fa + fd)) / 2 + fa;   // where the baseline lands in a 22px-tall line
+      document.documentElement.style.setProperty('--grade-dy', (H / 2 - (baseline - cap / 2)).toFixed(2) + 'px');
+    } catch { /* keep the default */ }
+  })();
   const ord = (v) => (num(v) == null ? '–' : Math.round(v) + '%');
 
   // Property facts from a lot (tile feature properties)
@@ -1315,7 +1330,18 @@
     const shape = key === 'hoods' ? null : f;   // neighborhoods fit themselves below
     if (shape && mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 });
   }
+  // A tap on the map while a card or the layers panel is open only closes it (nothing gets selected).
+  // Decided at touch-down, before the card/panel closes, so the next tap selects as normal.
+  let dismissTap = false;
+  map.getContainer().addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary) return;
+    if (e.target !== map.getCanvas()) { dismissTap = false; return; }   // buttons and controls don't count
+    const panelOpen = [...document.querySelectorAll('.layers-panel')].some((el) => !el.hidden);
+    // desktop: only the layers panel blocks the tap; an open card doesn't (clicking elsewhere just picks the next thing)
+    dismissTap = panelOpen || searchOpen || searchClosedAt === e.timeStamp || (mobile.matches && sheet.classList.contains('open') && !sheetLock);
+  }, true);
   map.on('click', async (e) => {
+    if (dismissTap) { dismissTap = false; if (!sheetLock) closeSheet(); return; }
     // 1) places: clusters zoom in, dots open a card
     const pts = map.queryRenderedFeatures(e.point, { layers: visibleLayers(['-cluster', '-dot'], 'places') });
     if (pts.length) {
@@ -1342,6 +1368,150 @@
     if (map.getZoom() >= 15 && map.getLayer('lots-hit')) ids.push('lots-hit');
     map.getCanvas().style.cursor = ids.length && map.queryRenderedFeatures(e.point, { layers: ids }).length ? 'pointer' : '';
   });
+
+  /* ---------- Search ----------
+     Magnifier button opens a bar. Suggests saved homes, places (neighborhoods, cities, schools, restaurants,
+     grocery stores, attendance areas) and lot addresses (data/addr/<first 2 chars of house number>.json).
+     Picking one closes the bar, switches on its layer if needed, flies there and opens its card. */
+  const WORDS = { street: 'st', avenue: 'ave', av: 'ave', road: 'rd', drive: 'dr', boulevard: 'blvd', lane: 'ln', court: 'ct', place: 'pl',
+    terrace: 'ter', circle: 'cir', parkway: 'pkwy', highway: 'hwy', north: 'n', south: 's', east: 'e', west: 'w',
+    northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', saint: 'st', mount: 'mt' };
+  const sNorm = (s) => String(s ?? '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 -]/g, ' ').replace(/-/g, ' ')
+    .split(/\s+/).filter(Boolean).map((w) => WORDS[w] || w).join(' ');
+  // every typed word must start some word of the name; names that start with the whole query rank first
+  function score(name, q, qw) {
+    const n = sNorm(name); if (!n) return -1;
+    const words = n.split(' ');
+    if (!qw.every((t) => words.some((w) => w.startsWith(t)))) return -1;
+    return n.startsWith(q) ? 0 : words.some((w) => w.startsWith(qw[0])) && n.includes(q) ? 1 : 2;
+  }
+  const SEARCH_SETS = [   // [layer key, label, file, name, sub]
+    ['hoods', 'Neighborhood', 'data/neighborhoods.geojson', (p) => p.Name, (p) => title(p.City)],
+    ['cities', 'City', 'data/cities.geojson', (p) => p.NAME, (p) => (/CDP$/.test(p.NAMELSAD || '') ? 'Census-designated place' : '')],
+    ['pSchools', 'School', 'data/schools.geojson', (p) => p.Label_Name, (p) => title(p.CITY)],
+    ['pFood', 'Restaurant', 'data/restaurants_named.geojson', (p) => p.USER_NAME, (p) => [p.USER_CATEGORY, p.USER_CITY].filter(Boolean).join(' · ')],
+    ['pGrocery', 'Grocery store', 'data/groceryStores.geojson', (p) => p.Name, (p) => p.City],
+    ['sas', 'Attendance area', 'data/schoolAttendanceAreas.geojson', (p) => p[SAS_ES] && p[SAS_ES] + ' area', (p) => p['SchoolAttendanceAreas_Clipped.Unified_SD_Name']],
+  ];
+  const SEARCH_ICON = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6"/><path d="m15.25 15.25 4.25 4.25"/></svg>';
+  document.body.insertAdjacentHTML('beforeend', `
+    <button type="button" class="fab fab-search" aria-label="Search">${SEARCH_ICON}</button>
+    <div class="search" hidden>
+      <div class="search-bar">${SEARCH_ICON}<input type="search" placeholder="Search address, place, school…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Search">
+        <button type="button" class="search-x" aria-label="Clear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button></div>
+      <div class="search-list" role="listbox"></div>
+    </div>`);
+  const sBtn = document.querySelector('.fab-search'), sBox = document.querySelector('.search'),
+        sInput = sBox.querySelector('input'), sList = sBox.querySelector('.search-list'), sX = sBox.querySelector('.search-x');
+  let searchOpen = false, searchClosedAt = -1, sResults = [], sSeq = 0, sTimer = 0;
+  function openSearch() {
+    searchOpen = true; sBox.hidden = false; sBtn.hidden = true;
+    sInput.focus(); runSearch();
+    if (sb && !homesRows.size) loadHomes().catch(() => {});   // saved homes, if signed in
+    SEARCH_SETS.forEach((s) => getJSON(s[2]).catch(() => null));   // warm up the name lists
+  }
+  function closeSearch() {
+    if (!searchOpen) return;
+    searchOpen = false; sBox.hidden = true; sBtn.hidden = false;
+    sInput.value = ''; sList.innerHTML = ''; sResults = []; sInput.blur();
+  }
+  sBtn.addEventListener('click', openSearch);
+  sX.addEventListener('click', () => { if (sInput.value) { sInput.value = ''; runSearch(); sInput.focus(); } else closeSearch(); });
+  sInput.addEventListener('input', () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 120); });
+  sInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeSearch(); }
+    if (e.key === 'Enter' && sResults[0]) { e.preventDefault(); pickResult(sResults[0]); }
+  });
+  document.addEventListener('pointerdown', (e) => {   // tap anywhere outside closes it (map taps are swallowed below)
+    if (searchOpen && !sBox.contains(e.target) && e.target !== sBtn) { searchClosedAt = e.timeStamp; closeSearch(); }
+  }, true);
+  sList.addEventListener('click', (e) => { const li = e.target.closest('[data-i]'); if (li) pickResult(sResults[+li.dataset.i]); });
+
+  async function runSearch() {
+    const seq = ++sSeq, raw = sInput.value.trim(), q = sNorm(raw), qw = q ? q.split(' ') : [];
+    sX.style.visibility = raw ? 'visible' : 'hidden';
+    if (!q) { sResults = []; sList.innerHTML = ''; return; }
+    const out = [];
+    // saved homes
+    for (const r of homesRows.values()) {
+      const s = score(r.address || r.title, q, qw);
+      if (s >= 0 && r.lat != null) out.push({ kind: 'home', s: -1, name: r.address || r.title || 'Home', sub: 'Saved home', id: r.id });
+    }
+    // named places
+    const sets = await Promise.all(SEARCH_SETS.map((s) => getJSON(s[2]).catch(() => null)));
+    if (seq !== sSeq) return;
+    const named = [];
+    SEARCH_SETS.forEach(([key, label, , nameOf, subOf], si) => {
+      const fc = sets[si]; if (!fc) return;
+      fc.features.forEach((f, i) => {
+        if (!f.geometry) return;
+        const name = nameOf(f.properties); const s = score(name, q, qw);
+        if (s >= 0) named.push({ kind: 'feature', key, s, name, sub: [label, subOf(f.properties)].filter(Boolean).join(' · '), i });
+      });
+    });
+    named.sort((a, b) => a.s - b.s || a.name.length - b.name.length);
+    const seen = new Set();
+    out.push(...named.filter((r) => { const k = r.key + '|' + sNorm(r.name); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8));
+    // lot addresses (start with a house number)
+    if (/^\d/.test(q) && (qw[0].length >= 2 || qw.length > 1)) {
+      const rows = await getJSON('data/addr/' + qw[0].slice(0, 2) + '.json').catch(() => []);
+      if (seq !== sSeq) return;
+      const hits = [];
+      for (const r of rows) {
+        const n = (r._n ||= sNorm(r[0] + ' ' + r[1] + ' ' + r[2])); const words = n.split(' ');
+        if (!words[0].startsWith(qw[0]) || !qw.slice(1).every((t) => words.some((w, k) => k > 0 && w.startsWith(t)))) continue;
+        hits.push(r); if (hits.length > 400) break;
+      }
+      hits.sort((a, b) => (sNorm(a[0]).startsWith(q) ? 0 : 1) - (sNorm(b[0]).startsWith(q) ? 0 : 1) || a[0].length - b[0].length);
+      for (const r of hits.slice(0, 8)) out.push({ kind: 'lot', s: 3, name: r[0], sub: [r[1], r[2]].filter(Boolean).join(' '), ll: [r[3], r[4]] });
+    }
+    sResults = out;
+    const ICON = { home: 'pHomes', hoods: 'hood', cities: 'city', sas: 'sas', tracts: 'tract' };
+    sList.innerHTML = out.length ? out.map((r, i) => {
+      const k = r.kind === 'home' ? 'pHomes' : r.kind === 'lot' ? 'lot' : r.key;
+      const ic = /^p[A-Z]/.test(k) ? `<img alt="" src="${drawPoint(k, themeNow()).toDataURL()}">` : k === 'lot' ? `<span class="si-pin">${PIN_SVG}</span>` : `<span class="si-area" style="--sw:${PALETTE[themeNow()][ICON[k]]}"></span>`;
+      return `<button type="button" class="search-item" data-i="${i}">${ic}<span class="si-text"><b>${esc(r.name)}</b>${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</span></button>`;
+    }).join('') : `<div class="search-empty">No matches${/^\d/.test(q) && qw.length === 1 && qw[0].length < 2 ? ' yet' : ''}</div>`;
+  }
+  const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></svg>';
+
+  // Switch a layer on (and tick its box), then wait for its data to be on the map
+  function layerOn(key) {
+    if (!overlayOn[key]) { setOverlay(key, true); const box = document.querySelector(`.layers-switch[data-key="${key}"]`); if (box) box.checked = true; }
+    return new Promise((res) => {
+      const id = 'ov-' + key, t = setTimeout(res, 4000);
+      const check = () => { if (map.getSource(id) && map.isSourceLoaded(id)) { clearTimeout(t); map.off('sourcedata', check); res(); } };
+      map.on('sourcedata', check); check();
+    });
+  }
+  async function pickResult(r) {
+    closeSearch();
+    if (!r) return;
+    try {
+      if (r.kind === 'home') {
+        await layerOn('pHomes');
+        openHome(r.id);
+      } else if (r.kind === 'lot') {
+        if (!sheetLock) closeSheet();
+        map.easeTo({ center: r.ll, zoom: Math.max(map.getZoom(), 18), duration: 900 });
+        await new Promise((res) => map.once('idle', res));
+        const want = sNorm(r.name);
+        const lots = map.getSource('lots') ? map.querySourceFeatures('lots', { sourceLayer: 'lots' }).filter((f) => sNorm(f.properties.addr) === want) : [];
+        const f = lots.find((x) => inFeature(x, r.ll[0], r.ll[1])) || lots[0];
+        if (f) openLot(f, r.ll); else toast('Couldn’t find that lot on the map.');
+      } else {
+        const set = SEARCH_SETS.find((s) => s[0] === r.key), fc = await getJSON(set[2]);
+        const src = fc.features[r.i], f = { ...src, id: r.i };
+        await layerOn(r.key);
+        if (r.key.startsWith('p')) openPlace(r.key, f);
+        else {
+          const [x0, y0, x1, y1] = bboxOf(src), ll = [(x0 + x1) / 2, (y0 + y1) / 2];
+          await openArea(r.key, f, ll);
+          map.fitBounds([[x0, y0], [x1, y1]], { padding: sheetPad(), maxZoom: 16, duration: 800 });
+        }
+      }
+    } catch (err) { toast(err.message || String(err)); }
+  }
 
   // Opened from a home card on the home page (?pin=<id>): show Homes and go to it.
   const pinId = new URLSearchParams(location.search).get('pin');
