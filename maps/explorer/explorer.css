@@ -684,3 +684,9 @@ html, body {
 .sheet .bad { color: var(--down); font-weight: 700; }
 .sheet .flat { color: var(--ink); font-weight: 700; }
 .sheet table.kv td .good, .sheet table.kv td .bad, .sheet table.kv td .flat { font-size: 14px; }
+
+/* Phones: taller sheet (about two-thirds); the tapped home/lot stays visible in the top third */
+@media (max-width: 799px) { .sheet { max-height: 68vh; max-height: 68dvh; } }
+/* Action buttons scroll with the content (no longer pinned) */
+.sheet .foot { position: static; box-shadow: none; border-top: 1px solid var(--line); margin: 14px 0 0; padding: 14px 0 0; background: none; }
+.sheet .body:has(.foot) { padding-bottom: calc(16px + var(--safe-bottom)); }

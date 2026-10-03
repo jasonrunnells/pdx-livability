@@ -999,7 +999,7 @@
 
   // Camera: phones keep the target in the top half (sheet covers the bottom half); desktop centers it beside the panel
   const sheetPad = () => (mobile.matches
-    ? { top: 50, bottom: Math.round(map.getContainer().clientHeight / 2) + 30, left: 30, right: 30 }
+    ? { top: 40, bottom: Math.round(map.getContainer().clientHeight * 0.68) + 16, left: 30, right: 30 }
     : { top: 60, bottom: 60, left: 380 + 16 + 50, right: 60 });
   function cameraToPoint(ll, zoom) {
     const pad = sheetPad(), box = map.getContainer();
@@ -1206,12 +1206,12 @@
       const fc = await getJSON('data/neighborhoods.geojson');   // full shape (what the map hands back can be clipped to tiles)
       const full = fc.features.find((x) => x.properties.RegionID === p.RegionID) || f;
       const html = await hoodCard(p, full, ll);
-      if (selected && selected.key === key && selected.id === f.id) { openSheet(html); if (mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight / 4], duration: 500 }); }
+      if (selected && selected.key === key && selected.id === f.id) { openSheet(html); if (mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 }); }
     } else if (key === 'tracts') openSheet(tractCard(p));
     else if (key === 'cities') openSheet(cityCard(p));
     else if (key === 'sas') openSheet(sasCard(p));
     const shape = key === 'hoods' ? null : f;   // neighborhoods fit themselves below
-    if (shape && mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight / 4], duration: 500 });
+    if (shape && mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 });
   }
   map.on('click', async (e) => {
     // 1) places: clusters zoom in, dots open a card
