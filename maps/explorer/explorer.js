@@ -1148,10 +1148,36 @@
     <div class="acts"><button data-act="visit">${r.visited ? 'Undo visited' : 'Mark visited'}</button><button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>` };
   }
   // Fill the Property section once the lot under the point has loaded
+  // Lot for a written address: look it up in our address files, then pick that lot out of the loaded lot tiles
+  async function lotByAddress(address) {
+    const street = sNorm(String(address).split(',')[0].replace(/\s*(#|\bapt\b|\bunit\b|\bste\b).*$/i, '')), num0 = street.split(' ')[0];
+    if (!/^\d/.test(num0)) return null;
+    const rows = await getJSON('data/addr/' + num0.slice(0, 2) + '.json').catch(() => []);
+    const city = sNorm((String(address).split(',')[1] || '').trim());
+    const hits = rows.filter((x) => sNorm(x[0]) === street), row = hits.find((x) => !city || sNorm(x[1]) === city) || hits[0];
+    if (!row) return null;
+    const ll = [row[3], row[4]];
+    if (!map.getSource('lots')) return { f: null, ll };
+    const lots = map.querySourceFeatures('lots', { sourceLayer: 'lots' }).filter((x) => sNorm(x.properties.addr) === street);
+    return { f: lots.find((x) => inFeature(x, ll[0], ll[1])) || lots[0] || null, ll };
+  }
+  async function movePin(id, ll) {
+    const r = homesRows.get(id); if (!r || !sb) return;
+    if (Math.hypot(r.lng - ll[0], r.lat - ll[1]) < 0.00008) return;   // already on the lot (about 8 m)
+    const { data, error } = await sb.from('places').update({ lng: ll[0], lat: ll[1] }).eq('id', id).select().single();
+    if (!error && data) { homesRows.set(id, data); refreshHomes(); }
+  }
   function fillProperty(ll, hood, token, ctx) {
     const run = async () => {
       if (token !== openToken) return;
-      const f = lotAt(ll[0], ll[1]);
+      let f = lotAt(ll[0], ll[1]);
+      // The saved pin can sit just off its lot (e.g. it was placed by a street lookup and landed on the road).
+      // Then find the lot by its address instead, and move the saved pin onto that lot for next time.
+      if ((!f || (ctx.address && sNorm(f.properties.addr) !== sNorm(String(ctx.address).split(',')[0]))) && ctx.address) {
+        const byAddr = await lotByAddress(ctx.address);
+        if (token !== openToken) return;
+        if (byAddr) { f = byAddr.f; if (ctx.homeId && byAddr.ll) movePin(ctx.homeId, byAddr.ll); }
+      }
       const typical = await typicalFor(hood);
       if (token !== openToken) return;
       const el = sheetBody.querySelector('[data-sec="property"] .prop-body');
@@ -1171,7 +1197,7 @@
     if (token !== openToken) return;
     openSheet(html, { kind: 'home' });
     sheetBody.onclick = (e) => homeAction(e, id);
-    fillProperty([r.lng, r.lat], hood, token, { listPrice: num(r.price), homeSqft: num(r.sqft) });
+    fillProperty([r.lng, r.lat], hood, token, { listPrice: num(r.price), homeSqft: num(r.sqft), address: r.address, homeId: r.id });
     fillExtras([r.lng, r.lat], token);
   }
   async function openLot(f, ll) {
@@ -1377,7 +1403,7 @@
      Picking one closes the bar, switches on its layer if needed, flies there and opens its card. */
   const WORDS = { street: 'st', avenue: 'ave', av: 'ave', road: 'rd', drive: 'dr', boulevard: 'blvd', lane: 'ln', court: 'ct', place: 'pl',
     terrace: 'ter', circle: 'cir', parkway: 'pkwy', highway: 'hwy', north: 'n', south: 's', east: 'e', west: 'w',
-    northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', saint: 'st', mount: 'mt' };
+    northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', saint: 'st', mount: 'mt', fort: 'ft' };
   const sNorm = (s) => String(s ?? '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 -]/g, ' ').replace(/-/g, ' ')
     .split(/\s+/).filter(Boolean).map((w) => WORDS[w] || w).join(' ');
   // every typed word must start some word of the name; names that start with the whole query rank first

@@ -291,7 +291,7 @@ const gradesHTML = (r) => `<span>Area ${badge(r.area)}</span><span>${esc(shortHS
 /* ---------- Address lookup: our own lot addresses first (maps/explorer/data/addr), OpenStreetMap only as a backup ---------- */
 const WORDS = { street: 'st', avenue: 'ave', av: 'ave', road: 'rd', drive: 'dr', boulevard: 'blvd', lane: 'ln', court: 'ct', place: 'pl',
   terrace: 'ter', circle: 'cir', parkway: 'pkwy', highway: 'hwy', north: 'n', south: 's', east: 'e', west: 'w',
-  northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw' };
+  northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', saint: 'st', mount: 'mt', fort: 'ft' };
 const sNorm = (s) => String(s ?? '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9# -]/g, ' ').replace(/-/g, ' ')
   .split(/\s+/).filter(Boolean).map((w) => WORDS[w] || w).join(' ');
 const label = (r) => `${r[0]}, ${[r[1], ['OR', r[2]].filter(Boolean).join(' ')].filter(Boolean).join(', ')}`;
