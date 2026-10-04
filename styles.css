@@ -570,3 +570,14 @@ h2 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -0.015em; }
 .band-list:has(.peek:not([hidden])) { max-height: 300px; }
 /* let the page keep scrolling once a band list hits its top or bottom */
 .band-list { overscroll-behavior: auto; }
+
+/* Home stats without the rating tile: two number tiles (phones: side by side), then neighborhood + city */
+.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 800px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)) repeat(2, minmax(0, 1.35fr)); } }
+/* Ratings chart rows */
+.band-stars { display: inline-flex; gap: 1px; }
+.band-stars svg { width: 13px; height: 13px; fill: #F7B230; }
+.band-none { font-size: 13px; font-weight: 650; color: var(--ink-soft); }
+#ratings .band-bar i { background: #F7B230; }
+#ratings .band.open .band-bar i { background: var(--blue); }
+#ratings .band.unrated .band-bar i { background: color-mix(in srgb, var(--ink-soft) 45%, transparent); }

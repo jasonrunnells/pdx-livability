@@ -62,38 +62,28 @@ function render(rows) {
    each listed home opens on the map. Stays readable with any number of homes. */
 const kUsd = (v) => (v >= 1e6 ? '$' + String(+(v / 1e6).toFixed(2)) + 'M' : '$' + Math.round(v / 1000) + 'k');
 const placeOf = new Map();   // home id -> { hood, hoodId, city }, looked up once from the map's boundary files
-let openBand = null;   // keep the open band open when the list re-renders
-function renderSpread(homes, avg) {
-  const el = $('#spread'), list = homes.filter((r) => +r.price > 0).sort((a, b) => a.price - b.price);
-  if (list.length < 2) { el.hidden = true; return; }
-  const lo = list[0].price, hi = list.at(-1).price;
-  // a "nice" band size giving about 4–7 bands
-  const raw = Math.max(1, (hi - lo) / 6), steps = [25e3, 50e3, 100e3, 150e3, 200e3, 250e3, 500e3, 1e6];
-  const step = steps.find((x) => x >= raw) || 1e6, start = Math.floor(lo / step) * step;
-  const n = Math.max(1, Math.floor((hi - start) / step) + 1);
-  const bands = Array.from({ length: n }, (_, k) => ({ from: start + k * step, to: start + (k + 1) * step, homes: [] }));
-  for (const r of list) bands[Math.min(n - 1, Math.floor((r.price - start) / step))].homes.push(r);
-  const max = Math.max(...bands.map((b) => b.homes.length));
-  const mid = list.length % 2 ? list[(list.length - 1) / 2].price : (list[list.length / 2 - 1].price + list[list.length / 2].price) / 2;
-  const avgBand = avg ? Math.min(n - 1, Math.floor((avg - start) / step)) : -1;
+const openBand = {};   // which band is open in each chart (kept when the page re-renders)
+// One bar chart card: a row per group (label, bar, count). Tap a row to list its homes (up to 4, then scrolls);
+// tap a home for a peek card. Used by "Price bands" and "Ratings".
+function bandChart(el, id, title, headRight, groups) {
+  const max = Math.max(1, ...groups.map((g) => g.homes.length));
   el.hidden = false;
-  el.innerHTML = `<div class="spread-head"><span>Price bands</span><small>Avg <b>${kUsd(avg)}</b> · Median <b>${kUsd(mid)}</b></small></div>
-    <div class="bands">${bands.map((b, k) => (!b.homes.length ? '' : `
-      <button type="button" class="band${b.homes.length ? '' : ' empty'}${openBand === b.from ? ' open' : ''}" data-k="${k}" ${b.homes.length ? '' : 'disabled'} aria-expanded="${openBand === b.from}">
-        <span class="band-lbl">${kUsd(b.from)}–${kUsd(b.to)}</span>
-        <span class="band-bar"><i style="width:${b.homes.length ? Math.max(6, (b.homes.length / max) * 100) : 0}%"></i></span>
-        <span class="band-n">${b.homes.length || ''}</span>
+  el.innerHTML = `<div class="spread-head"><span>${title}</span><small>${headRight}</small></div>
+    <div class="bands">${groups.map((g, k) => (!g.homes.length ? '' : `
+      <button type="button" class="band${openBand[id] === g.key ? ' open' : ''}${g.cls ? ' ' + g.cls : ''}" data-k="${k}" aria-expanded="${openBand[id] === g.key}">
+        <span class="band-lbl">${g.label}</span>
+        <span class="band-bar"><i style="width:${Math.max(6, (g.homes.length / max) * 100)}%"></i></span>
+        <span class="band-n">${g.homes.length}</span>
       </button>
-      <div class="band-list" ${openBand === b.from ? '' : 'hidden'}>${b.homes.map((r) => `
-        <button type="button" class="band-home" data-id="${esc(r.id)}" aria-expanded="false"><b>${usd(r.price)}</b><span>${esc(r.address || 'Home')}</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>
+      <div class="band-list" ${openBand[id] === g.key ? '' : 'hidden'}>${g.homes.map((r) => `
+        <button type="button" class="band-home" data-id="${esc(r.id)}" aria-expanded="false"><b>${r.price ? usd(r.price) : 'No price'}</b><span>${esc(r.address || 'Home')}</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>
         <div class="peek" hidden></div>`).join('')}
       </div>`)).join('')}</div>`;
   el.querySelectorAll('.band').forEach((btn) => btn.addEventListener('click', () => {
-    const b = bands[+btn.dataset.k], willOpen = openBand !== b.from;
-    openBand = willOpen ? b.from : null;
+    const g = groups[+btn.dataset.k], willOpen = openBand[id] !== g.key;
+    openBand[id] = willOpen ? g.key : null;
     el.querySelectorAll('.band').forEach((x) => { const on = willOpen && x === btn; x.classList.toggle('open', on); x.setAttribute('aria-expanded', on); x.nextElementSibling.hidden = !on; });
   }));
-  // Tap a home in a band: a small peek card opens under it (photo, key facts, school grades, link to the map)
   el.querySelectorAll('.band-home').forEach((btn) => btn.addEventListener('click', () => {
     const peek = btn.nextElementSibling, willOpen = peek.hidden;
     el.querySelectorAll('.band-home').forEach((x) => { x.classList.remove('on'); x.setAttribute('aria-expanded', 'false'); x.nextElementSibling.hidden = true; });
@@ -101,8 +91,7 @@ function renderSpread(homes, avg) {
     const r = allRows.find((x) => String(x.id) === btn.dataset.id); if (!r) return;
     btn.classList.add('on'); btn.setAttribute('aria-expanded', 'true');
     peek.innerHTML = peekHTML(r); peek.hidden = false;
-    // keep the tapped home and its peek in view inside the band's scrolling list
-    const box = btn.parentElement;
+    const box = btn.parentElement;   // keep the tapped home and its peek in view inside the scrolling list
     requestAnimationFrame(() => box.scrollTo({ top: btn.offsetTop - 4, behavior: 'smooth' }));
     if (r.lat != null) schoolCheck(r.lng, r.lat).then((c) => {
       const g = peek.querySelector('.peek-schools'); if (!g) return;
@@ -110,6 +99,36 @@ function renderSpread(homes, avg) {
         : `<span>Area ${badge(c.area)}</span><span><em>${esc(shortHS(c.hsName))}</em>${badge(c.hs)}</span>`;
     }).catch(() => {});
   }));
+}
+// Price bands: even price ranges ("nice" size giving about 4–7 bands); empty ranges are left out
+function renderSpread(homes, avg) {
+  const el = $('#spread'), list = homes.filter((r) => +r.price > 0).sort((a, b) => a.price - b.price);
+  if (list.length < 2) { el.hidden = true; return; }
+  const lo = list[0].price, hi = list.at(-1).price;
+  const raw = Math.max(1, (hi - lo) / 6), steps = [25e3, 50e3, 100e3, 150e3, 200e3, 250e3, 500e3, 1e6];
+  const step = steps.find((x) => x >= raw) || 1e6, start = Math.floor(lo / step) * step;
+  const n = Math.max(1, Math.floor((hi - start) / step) + 1);
+  const groups = Array.from({ length: n }, (_, k) => ({ key: start + k * step, label: `${kUsd(start + k * step)}–${kUsd(start + (k + 1) * step)}`, homes: [] }));
+  for (const r of list) groups[Math.min(n - 1, Math.floor((r.price - start) / step))].homes.push(r);
+  const mid = list.length % 2 ? list[(list.length - 1) / 2].price : (list[list.length / 2 - 1].price + list[list.length / 2].price) / 2;
+  bandChart(el, 'price', 'Price bands', `Avg <b>${kUsd(avg)}</b> · Median <b>${kUsd(mid)}</b>`, groups);
+}
+// Ratings: one row per star level, best first (half stars count with the whole star below, e.g. 4.5 → 4★ row
+// labeled "4–4.5"), then homes not rated yet
+const STARS_ROW = (n) => `<span class="band-stars" aria-label="${n} stars">${'<svg viewBox="0 0 24 24"><path d="M12 3.4l2.55 5.3 5.85.8-4.25 4.05 1.05 5.8L12 16.6l-5.2 2.75 1.05-5.8L3.6 9.5l5.85-.8z"/></svg>'.repeat(n)}</span>`;
+function renderRatings(homes) {
+  const el = $('#ratings');
+  if (!homes.length) { el.hidden = true; return; }
+  const rated = homes.filter((r) => +r.rating > 0), groups = [];
+  for (let st = 5; st >= 1; st--) {
+    const h = rated.filter((r) => Math.min(5, Math.max(1, Math.floor(+r.rating))) === st).sort((a, b) => b.rating - a.rating || (a.price || 0) - (b.price || 0));
+    groups.push({ key: st, label: STARS_ROW(st), homes: h });
+  }
+  // ratings below 1 (half a star) join the 1★ row
+  rated.filter((r) => +r.rating < 1).forEach((r) => groups[4].homes.push(r));
+  groups.push({ key: 'none', label: '<span class="band-none">Not rated</span>', homes: homes.filter((r) => !(+r.rating > 0)), cls: 'unrated' });
+  const avg = rated.length ? rated.reduce((a, r) => a + +r.rating, 0) / rated.length : null;
+  bandChart(el, 'rating', 'Ratings', avg ? `Avg <b>${avg.toFixed(1)}</b> ★ · <b>${rated.length}</b> rated` : 'No ratings yet', groups);
 }
 const STAR_SM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.4l2.55 5.3 5.85.8-4.25 4.05 1.05 5.8L12 16.6l-5.2 2.75 1.05-5.8L3.6 9.5l5.85-.8z"/></svg>';
 function peekHTML(r) {
@@ -143,13 +162,13 @@ async function renderStats(homes) {
   const mapLink = (layer, val) => `maps/explorer/index.html?show=${layer}&id=${encodeURIComponent(val)}`;
   const draw = (hood, city) => {
     el.innerHTML = tile('Homes saved', homes.length, `${visited} visited`)
-      + tile('Average rating', avgRating ? `${avgRating.toFixed(1)}${STAR}` : '–', rated.length ? `${rated.length} rated home${rated.length === 1 ? '' : 's'}` : 'No ratings yet', 'rating')
       + tile('Average price', avg ? usd(avg) : '–', priced.length > 1 ? `${usd(Math.min(...priced))} – ${usd(Math.max(...priced))}` : '')
       + tile('Most-saved neighborhood', hood ? esc(hood[0]) : '…', hood ? `${hood[1]} of ${homes.length} homes` : '', 'name hood', hood?.[2] ? mapLink('hoods', hood[2]) : '')
       + tile('Most-saved city', city ? esc(city[0]) : '…', city ? `${city[1]} of ${homes.length} homes` : '', 'name city', city?.[0] && city[0] !== '–' ? mapLink('cities', city[0]) : '');
   };
   draw(null, null);
   renderSpread(homes, avg);
+  renderRatings(homes);
   const [hoods, cities] = await Promise.all([getJSON(DATA + 'neighborhoods.geojson').catch(() => null), getJSON(DATA + 'cities.geojson').catch(() => null)]);
   for (const r of homes) if (!placeOf.has(r.id) && r.lat != null) {
     const h = hoods && featureAt(hoods, r.lng, r.lat);
