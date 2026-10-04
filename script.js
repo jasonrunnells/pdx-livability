@@ -43,8 +43,9 @@ function homeCard(r) {
   const photo = (r.photos || [])[0];
   return `<a class="card home-card" style="--dot:${KIND.home.color}" href="maps/explorer/index.html?pin=${r.id}">
     <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic('home')}</div>`}
-      ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}</div>
-    <div class="body"><div class="price">${r.price ? usd(r.price) : 'No price'}</div><div class="addr">${esc(r.address || '')}</div>${specs ? `<div class="specs">${specs}</div>` : ''}</div>
+      ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}
+      ${specs ? `<div class="specbar">${specs}</div>` : ''}</div>
+    <div class="body"><div class="price">${r.price ? usd(r.price) : 'No price'}</div><div class="addr">${esc(r.address || '')}</div></div>
   </a>`;
 }
 function render(rows) {
@@ -53,6 +54,114 @@ function render(rows) {
   $('#homesGrid').innerHTML = h.length ? h.slice(0, 24).map(homeCard).join('') : '<p class="empty">No homes added yet. Tap “Add a home” to save the first one.</p>';
   $('#updatesGrid').innerHTML = rows.length ? rows.slice(0, 12).map(updateCard).join('') : '<p class="empty">Nothing logged yet.</p>';
   requestAnimationFrame(() => navUpdaters.forEach((u) => u()));
+  renderStats(h);
+}
+
+/* ---------- Home stats: quick numbers about the saved homes ---------- */
+/* Price bands: homes grouped into even price ranges, one bar per range. Tap (or click) a band to list its homes;
+   each listed home opens on the map. Stays readable with any number of homes. */
+const kUsd = (v) => (v >= 1e6 ? '$' + String(+(v / 1e6).toFixed(2)) + 'M' : '$' + Math.round(v / 1000) + 'k');
+const placeOf = new Map();   // home id -> { hood, hoodId, city }, looked up once from the map's boundary files
+let openBand = null;   // keep the open band open when the list re-renders
+function renderSpread(homes, avg) {
+  const el = $('#spread'), list = homes.filter((r) => +r.price > 0).sort((a, b) => a.price - b.price);
+  if (list.length < 2) { el.hidden = true; return; }
+  const lo = list[0].price, hi = list.at(-1).price;
+  // a "nice" band size giving about 4–7 bands
+  const raw = Math.max(1, (hi - lo) / 6), steps = [25e3, 50e3, 100e3, 150e3, 200e3, 250e3, 500e3, 1e6];
+  const step = steps.find((x) => x >= raw) || 1e6, start = Math.floor(lo / step) * step;
+  const n = Math.max(1, Math.floor((hi - start) / step) + 1);
+  const bands = Array.from({ length: n }, (_, k) => ({ from: start + k * step, to: start + (k + 1) * step, homes: [] }));
+  for (const r of list) bands[Math.min(n - 1, Math.floor((r.price - start) / step))].homes.push(r);
+  const max = Math.max(...bands.map((b) => b.homes.length));
+  const mid = list.length % 2 ? list[(list.length - 1) / 2].price : (list[list.length / 2 - 1].price + list[list.length / 2].price) / 2;
+  const avgBand = avg ? Math.min(n - 1, Math.floor((avg - start) / step)) : -1;
+  el.hidden = false;
+  el.innerHTML = `<div class="spread-head"><span>Price bands</span><small>Avg <b>${kUsd(avg)}</b> · Median <b>${kUsd(mid)}</b></small></div>
+    <div class="bands">${bands.map((b, k) => (!b.homes.length ? '' : `
+      <button type="button" class="band${b.homes.length ? '' : ' empty'}${openBand === b.from ? ' open' : ''}" data-k="${k}" ${b.homes.length ? '' : 'disabled'} aria-expanded="${openBand === b.from}">
+        <span class="band-lbl">${kUsd(b.from)}–${kUsd(b.to)}</span>
+        <span class="band-bar"><i style="width:${b.homes.length ? Math.max(6, (b.homes.length / max) * 100) : 0}%"></i></span>
+        <span class="band-n">${b.homes.length || ''}</span>
+      </button>
+      <div class="band-list" ${openBand === b.from ? '' : 'hidden'}>${b.homes.map((r) => `
+        <button type="button" class="band-home" data-id="${esc(r.id)}" aria-expanded="false"><b>${usd(r.price)}</b><span>${esc(r.address || 'Home')}</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>
+        <div class="peek" hidden></div>`).join('')}
+      </div>`)).join('')}</div>`;
+  el.querySelectorAll('.band').forEach((btn) => btn.addEventListener('click', () => {
+    const b = bands[+btn.dataset.k], willOpen = openBand !== b.from;
+    openBand = willOpen ? b.from : null;
+    el.querySelectorAll('.band').forEach((x) => { const on = willOpen && x === btn; x.classList.toggle('open', on); x.setAttribute('aria-expanded', on); x.nextElementSibling.hidden = !on; });
+  }));
+  // Tap a home in a band: a small peek card opens under it (photo, key facts, school grades, link to the map)
+  el.querySelectorAll('.band-home').forEach((btn) => btn.addEventListener('click', () => {
+    const peek = btn.nextElementSibling, willOpen = peek.hidden;
+    el.querySelectorAll('.band-home').forEach((x) => { x.classList.remove('on'); x.setAttribute('aria-expanded', 'false'); x.nextElementSibling.hidden = true; });
+    if (!willOpen) return;
+    const r = allRows.find((x) => String(x.id) === btn.dataset.id); if (!r) return;
+    btn.classList.add('on'); btn.setAttribute('aria-expanded', 'true');
+    peek.innerHTML = peekHTML(r); peek.hidden = false;
+    // keep the tapped home and its peek in view inside the band's scrolling list
+    const box = btn.parentElement;
+    requestAnimationFrame(() => box.scrollTo({ top: btn.offsetTop - 4, behavior: 'smooth' }));
+    if (r.lat != null) schoolCheck(r.lng, r.lat).then((c) => {
+      const g = peek.querySelector('.peek-schools'); if (!g) return;
+      g.innerHTML = c.none ? '<span class="muted">No attendance area</span>'
+        : `<span>Area ${badge(c.area)}</span><span><em>${esc(shortHS(c.hsName))}</em>${badge(c.hs)}</span>`;
+    }).catch(() => {});
+  }));
+}
+const STAR_SM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.4l2.55 5.3 5.85.8-4.25 4.05 1.05 5.8L12 16.6l-5.2 2.75 1.05-5.8L3.6 9.5l5.85-.8z"/></svg>';
+function peekHTML(r) {
+  const photo = (r.photos || [])[0], place = placeOf.get(r.id) || {};
+  const facts = [r.beds != null ? `<span><b>${esc(r.beds)}</b> bd</span>` : '', r.baths != null ? `<span><b>${esc(r.baths)}</b> ba</span>` : '',
+                 r.sqft ? `<span><b>${(+r.sqft).toLocaleString()}</b> sq ft</span>` : ''].join('');
+  const rating = +r.rating > 0 ? `<span class="peek-rating">${STAR_SM}${(+r.rating).toFixed(1)}</span>` : '';
+  return `<div class="peek-card">
+    <div class="peek-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : ic('home')}${r.visited ? `<span class="peek-visited">${ic('check')}</span>` : ''}</div>
+    <div class="peek-body">
+      <div class="peek-top">${facts ? `<div class="peek-facts">${facts}</div>` : ''}${rating}</div>
+      <div class="peek-sub">${[place.hood ? `<span class="nb-hood">${esc(place.hood)}</span>` : '', place.city ? `<span class="nb-city">${esc(place.city)}</span>` : ''].filter(Boolean).join(' · ')}</div>
+      <div class="peek-schools"><span class="muted">Checking schools…</span></div>
+      <a class="btn primary peek-map" href="maps/explorer/index.html?pin=${r.id}">Open on map</a>
+    </div>
+  </div>`;
+}
+async function renderStats(homes) {
+  const el = $('#stats');
+  if (!homes.length) { el.innerHTML = '<p class="empty">Stats show up once you’ve saved a few homes.</p>'; return; }
+  const priced = homes.map((r) => +r.price).filter((v) => v > 0);
+  const avg = priced.length ? priced.reduce((a, b) => a + b, 0) / priced.length : null;
+  const visited = homes.filter((r) => r.visited).length;
+  const rated = homes.map((r) => +r.rating).filter((v) => v > 0);
+  const avgRating = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+  const STAR = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.4l2.55 5.3 5.85.8-4.25 4.05 1.05 5.8L12 16.6l-5.2 2.75 1.05-5.8L3.6 9.5l5.85-.8z"/></svg>';
+  const tile = (label, value, sub, cls = '', href = '') => {
+    const inner = `<span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}`;
+    return href ? `<a class="stat link-tile ${cls}" href="${href}">${inner}<svg class="ic go" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></a>` : `<div class="stat ${cls}">${inner}</div>`;
+  };
+  const mapLink = (layer, val) => `maps/explorer/index.html?show=${layer}&id=${encodeURIComponent(val)}`;
+  const draw = (hood, city) => {
+    el.innerHTML = tile('Homes saved', homes.length, `${visited} visited`)
+      + tile('Average rating', avgRating ? `${avgRating.toFixed(1)}${STAR}` : '–', rated.length ? `${rated.length} rated home${rated.length === 1 ? '' : 's'}` : 'No ratings yet', 'rating')
+      + tile('Average price', avg ? usd(avg) : '–', priced.length > 1 ? `${usd(Math.min(...priced))} – ${usd(Math.max(...priced))}` : '')
+      + tile('Most-saved neighborhood', hood ? esc(hood[0]) : '…', hood ? `${hood[1]} of ${homes.length} homes` : '', 'name hood', hood?.[2] ? mapLink('hoods', hood[2]) : '')
+      + tile('Most-saved city', city ? esc(city[0]) : '…', city ? `${city[1]} of ${homes.length} homes` : '', 'name city', city?.[0] && city[0] !== '–' ? mapLink('cities', city[0]) : '');
+  };
+  draw(null, null);
+  renderSpread(homes, avg);
+  const [hoods, cities] = await Promise.all([getJSON(DATA + 'neighborhoods.geojson').catch(() => null), getJSON(DATA + 'cities.geojson').catch(() => null)]);
+  for (const r of homes) if (!placeOf.has(r.id) && r.lat != null) {
+    const h = hoods && featureAt(hoods, r.lng, r.lat);
+    placeOf.set(r.id, { hood: h?.Name, hoodId: h?.RegionID, city: cities && featureAt(cities, r.lng, r.lat)?.NAME });
+  }
+  const top = (key) => {
+    const n = {}; for (const r of homes) { const v = placeOf.get(r.id)?.[key]; if (v) n[v] = (n[v] || 0) + 1; }
+    const best = Object.entries(n).sort((a, b) => b[1] - a[1])[0]; if (!best) return ['–', 0];
+    const any = homes.map((r) => placeOf.get(r.id)).find((x) => x?.[key] === best[0]);
+    return key === 'hood' ? [...best, any?.hoodId] : best;
+  };
+  draw(top('hood'), top('city'));
 }
 
 /* ---------- Data + sign in ---------- */
@@ -261,10 +370,10 @@ function lockPage(on) {
 }
 const vv = window.visualViewport, wide = matchMedia('(min-width: 800px)');
 function fitSheet() {
-  if (sheet.hidden || !vv || wide.matches) { sheet.style.bottom = sheet.style.maxHeight = ''; return; }
+  if (sheet.hidden || !vv || wide.matches) { sheet.style.bottom = sheet.style.height = ''; return; }
   const hiddenBelow = Math.max(0, Math.round(innerHeight - (vv.offsetTop + vv.height)));   // keyboard (and any bar) covering the bottom
   sheet.style.bottom = hiddenBelow + 'px';
-  sheet.style.maxHeight = Math.round(vv.height - 12) + 'px';
+  sheet.style.height = Math.round(vv.height) + 'px';
   sheet.classList.toggle('kb', hiddenBelow > 40);
 }
 vv?.addEventListener('resize', fitSheet); vv?.addEventListener('scroll', fitSheet); wide.addEventListener('change', fitSheet);

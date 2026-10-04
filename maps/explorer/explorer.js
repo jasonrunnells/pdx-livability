@@ -1515,6 +1515,21 @@
     } catch (err) { toast(err.message || String(err)); }
   }
 
+  // Opened from Home stats on the home page (?show=hoods&id=<RegionID> or ?show=cities&id=<NAME>):
+  // switch that layer (and the saved Homes) on, zoom to the area and open its card.
+  {
+    const qs = new URLSearchParams(location.search), show = qs.get('show'), want = qs.get('id');
+    const set = SEARCH_SETS.find((x) => x[0] === show);
+    if (set && want) map.once('load', async () => {
+      try {
+        const fc = await getJSON(set[2]);
+        const i = fc.features.findIndex((f) => String(show === 'hoods' ? f.properties.RegionID : f.properties.NAME) === want);
+        if (i < 0) { toast('Couldn’t find that area on the map.'); return; }
+        layerOn('pHomes');   // it's about saved homes, so show them too
+        pickResult({ kind: 'feature', key: show, i });
+      } catch (err) { toast(err.message || String(err)); }
+    });
+  }
   // Opened from a home card on the home page (?pin=<id>): show Homes and go to it.
   const pinId = new URLSearchParams(location.search).get('pin');
   if (pinId) {
