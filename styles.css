@@ -581,3 +581,12 @@ h2 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -0.015em; }
 #ratings .band-bar i { background: #F7B230; }
 #ratings .band.open .band-bar i { background: var(--blue); }
 #ratings .band.unrated .band-bar i { background: color-mix(in srgb, var(--ink-soft) 45%, transparent); }
+
+/* Phones: Add-a-home is a full-screen page pinned to every edge, scrolling inside itself.
+   The keyboard covers its lower part instead of the page behind, so no gaps can appear. */
+@media (max-width: 799px) {
+  .sheet { top: 0; right: 0; bottom: 0; left: 0; height: auto !important; max-height: none !important;
+           border-radius: 0; box-shadow: none; transition: none; -webkit-overflow-scrolling: touch; }
+  .sheet-head { padding-top: calc(12px + var(--safe-top)); }
+  .scrim { background: var(--surface); }
+}

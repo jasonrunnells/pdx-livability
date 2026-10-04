@@ -387,16 +387,10 @@ function lockPage(on) {
   if (on) { lockY = scrollY; Object.assign(b, { position: 'fixed', top: -lockY + 'px', left: '0', right: '0', width: '100%' }); }
   else { Object.assign(b, { position: '', top: '', left: '', right: '', width: '' }); scrollTo(0, lockY); }
 }
-const vv = window.visualViewport, wide = matchMedia('(min-width: 800px)');
-function fitSheet() {
-  if (sheet.hidden || !vv || wide.matches) { sheet.style.bottom = sheet.style.height = ''; return; }
-  const hiddenBelow = Math.max(0, Math.round(innerHeight - (vv.offsetTop + vv.height)));   // keyboard (and any bar) covering the bottom
-  sheet.style.bottom = hiddenBelow + 'px';
-  sheet.style.height = Math.round(vv.height) + 'px';
-  sheet.classList.toggle('kb', hiddenBelow > 40);
-}
-vv?.addEventListener('resize', fitSheet); vv?.addEventListener('scroll', fitSheet); wide.addEventListener('change', fitSheet);
-document.addEventListener('focusin', () => { fitSheet(); setTimeout(fitSheet, 350); });   // iOS settles the keyboard after the focus event
+/* Phones: the sheet is a full-screen page (pinned to all four edges by CSS). The keyboard simply slides over its
+   bottom and the sheet scrolls inside, the way native apps do — nothing to measure, so nothing can leave a gap.
+   (fitSheet only clears any old inline sizing.) */
+function fitSheet() { sheet.style.bottom = sheet.style.height = sheet.style.maxHeight = ''; sheet.classList.remove('kb'); }
 $('#addHomeBtn').onclick = openSheet;
 $('#closeHome').onclick = closeSheet; $('#cancelHome').onclick = closeSheet; scrim.onclick = closeSheet;
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) { if (!alertBox.hidden) $('#reqCancel').click(); else closeSheet(); } });
