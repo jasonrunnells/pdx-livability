@@ -133,7 +133,7 @@ const normName = (v) => String(v || '').toLowerCase().replace(/&/g, 'and').repla
 async function schoolCheck(lng, lat) {
   const [areas, schools] = await Promise.all([getJSON(DATA + 'schoolAttendanceAreas.geojson'), getJSON(DATA + 'schools.geojson')]);
   const a = featureAt(areas, lng, lat);
-  if (!a) return { ok: false, area: null, hs: null, hsName: null, none: true };
+  if (!a) return { ok: false, missing: true, none: true, area: null, hs: null, hsName: null };
   const g = (k) => a['SchoolAttendanceAreas_Clipped.' + k];
   const district = normName(g('Unified_SD_Name')).split(' ')[0];
   const hsName = g('Grade_10_Choice1_Name'), n = normName(hsName);
@@ -144,7 +144,10 @@ async function schoolCheck(lng, lat) {
   };
   const hs = n ? (rank(all.filter((x) => x.School_Type === 'HS')) || rank(all.filter((x) => normName(x.DISTRICT).startsWith(district)))) : null;
   const area = a['SAA_with_percentiles.csv.SAA_Grade'], hsGrade = hs?.GRADE_1 || null;
-  return { ok: atLeast(area, 'C') && atLeast(hsGrade, 'B'), area, hs: hsGrade, hsName };
+  const has = (g) => /^[A-F]/i.test(String(g || '').trim());
+  const fails = (has(area) && !atLeast(area, 'C')) || (has(hsGrade) && !atLeast(hsGrade, 'B'));
+  const ok = atLeast(area, 'C') && atLeast(hsGrade, 'B');
+  return { ok, missing: !ok && !fails, area, hs: hsGrade, hsName };
 }
 const shortHS = (n) => String(n || 'High school').replace(/\s+(Senior\s+)?High School$/i, ' High').replace(/\s+School$/i, '');
 const gradesHTML = (r) => `<span>Area ${badge(r.area)}</span><span>${esc(shortHS(r.hsName))} ${badge(r.hs)}</span>`;
@@ -235,10 +238,29 @@ function resetForm() {
 }
 function openSheet() {
   if (!user) { if (authChecked) { gate.hidden = false; gate.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
-  resetForm(); sheet.hidden = false; scrim.hidden = false; document.body.classList.add('locked');
+  resetForm(); sheet.hidden = false; scrim.hidden = false; lockPage(true); fitSheet();
   setTimeout(() => linkIn.focus(), 50);
 }
-function closeSheet() { sheet.hidden = true; scrim.hidden = true; document.body.classList.remove('locked'); resetForm(); }
+function closeSheet() { sheet.hidden = true; scrim.hidden = true; lockPage(false); resetForm(); }
+/* Phones: while the sheet is open the page underneath is pinned (iOS ignores overflow:hidden on the body and scrolls
+   the page when the keyboard opens). The sheet follows the *visible* area: when the keyboard is up, its bottom sits on
+   top of the keyboard and it never grows taller than what's visible, so no page shows between the sheet and the keyboard. */
+let lockY = 0;
+function lockPage(on) {
+  const b = document.body.style;
+  if (on) { lockY = scrollY; Object.assign(b, { position: 'fixed', top: -lockY + 'px', left: '0', right: '0', width: '100%' }); }
+  else { Object.assign(b, { position: '', top: '', left: '', right: '', width: '' }); scrollTo(0, lockY); }
+}
+const vv = window.visualViewport, wide = matchMedia('(min-width: 800px)');
+function fitSheet() {
+  if (sheet.hidden || !vv || wide.matches) { sheet.style.bottom = sheet.style.maxHeight = ''; return; }
+  const hiddenBelow = Math.max(0, Math.round(innerHeight - (vv.offsetTop + vv.height)));   // keyboard (and any bar) covering the bottom
+  sheet.style.bottom = hiddenBelow + 'px';
+  sheet.style.maxHeight = Math.round(vv.height - 12) + 'px';
+  sheet.classList.toggle('kb', hiddenBelow > 40);
+}
+vv?.addEventListener('resize', fitSheet); vv?.addEventListener('scroll', fitSheet); wide.addEventListener('change', fitSheet);
+document.addEventListener('focusin', () => { fitSheet(); setTimeout(fitSheet, 350); });   // iOS settles the keyboard after the focus event
 $('#addHomeBtn').onclick = openSheet;
 $('#closeHome').onclick = closeSheet; $('#cancelHome').onclick = closeSheet; scrim.onclick = closeSheet;
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) { if (!alertBox.hidden) $('#reqCancel').click(); else closeSheet(); } });
@@ -246,10 +268,12 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) { 
 // Anything that changes the address undoes the check, so a new address is always checked again
 function invalidate() { picked = null; checkResult = null; cleared = false; runId++; checkBox.hidden = true; details.hidden = true; refresh(); }
 
+const MSG_FAIL = 'This home does not meet the current attendance area and high school grade requirements.';
+const MSG_MISSING = 'This home contains insufficient attendance area and high school grade data. It is recommended to add the home and tell Jason to investigate further.';
 function showCheck(r) {
   checkBox.hidden = false;
   checkBox.innerHTML = `<span class="${r.ok ? 'ok' : 'no'}">${ic(r.ok ? 'check' : 'cross')}</span>
-    <div class="check-text"><b>${r.ok ? 'Meets the school requirements' : r.none ? 'Not in an attendance area' : 'Below the school requirements'}</b>
+    <div class="check-text"><b>${r.ok ? 'Meets the school requirements' : r.missing ? 'Not enough school data' : 'Below the school requirements'}</b>
     ${r.none ? '' : `<div class="grades">${gradesHTML(r)}</div>`}</div>`;
 }
 // Run the check for a located address; passes open the rest of the form, misses ask first
@@ -258,11 +282,16 @@ async function runCheck(a) {
   picked = a; cleared = false; details.hidden = true; refresh();
   checkBox.hidden = false; checkBox.innerHTML = '<span class="spin"></span><div class="check-text">Checking schools…</div>';
   let r;
-  try { r = await schoolCheck(a.lng, a.lat); } catch (e) { r = { ok: false, none: true }; }
+  try { r = await schoolCheck(a.lng, a.lat); } catch (e) { r = { ok: false, missing: true, none: true }; }
   if (id !== runId) return;
   checkResult = r; showCheck(r);
   if (r.ok) proceed();
-  else { $('#reqGrades').innerHTML = r.none ? '<span>This address isn’t inside a school attendance area in our data.</span>' : gradesHTML(r); alertBox.hidden = false; $('#reqAnyway').focus(); }
+  else {
+    document.activeElement?.blur();   // close the phone keyboard before the message
+    $('#reqMsg').textContent = r.missing ? MSG_MISSING : MSG_FAIL;
+    $('#reqGrades').innerHTML = r.none ? '<span>This address isn’t inside a school attendance area in our data.</span>' : gradesHTML(r);
+    alertBox.hidden = false; $('#reqAnyway').focus({ preventScroll: true });
+  }
 }
 function proceed() { cleared = true; details.hidden = false; refresh(); setTimeout(() => form.price.focus({ preventScroll: true }), 50); }
 $('#reqCancel').onclick = closeSheet;

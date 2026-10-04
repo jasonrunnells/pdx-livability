@@ -320,3 +320,15 @@ h2 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -0.015em; }
   .hero .lede { color: var(--ink-soft); }
   .hero .btn { box-shadow: none; }
 }
+
+/* Hero buttons never wrap: tighter padding, smaller icon, single line; icons drop on very narrow phones */
+.actions .btn { white-space: nowrap; padding: 0 14px; gap: 7px; }
+.actions .btn .ic { width: 18px; height: 18px; }
+@media (max-width: 360px) { .actions .btn .ic { display: none; } }
+
+/* Add-a-home sheet on phones: position is set by script to sit on the keyboard; transitions keep it smooth */
+@media (max-width: 799px) {
+  .sheet { transition: bottom 0.12s ease-out; }
+  .sheet.kb { border-radius: 20px 20px 0 0; }
+  .sheet.kb .formacts { padding-bottom: 12px; }   /* no home-bar gap needed while the keyboard is open */
+}
