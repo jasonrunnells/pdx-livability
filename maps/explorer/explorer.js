@@ -1005,7 +1005,20 @@
   }
 
   // Schools for a location: its attendance area + the three assigned schools
-  const normName = (v) => String(v || '').toLowerCase().replace(/&/g, 'and').replace(/\b(school|sch)\b/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  // Match an attendance area's school name to the schools layer. Names differ between the two files
+  // ("Lake Oswego Senior High School" vs "Lake Oswego High", "Tobias Elementary School" vs "L C Tobias Elementary"),
+  // so compare the core name only, search the right level first (public schools), then the same district.
+  const SCH_DROP = new Set(['school', 'sch', 'senior', 'jr', 'k', '8', 'elementary', 'middle', 'high', 'es', 'ms', 'hs']);
+  const schCore = (v) => String(v || '').split('/')[0].toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/).filter((w) => w && !SCH_DROP.has(w)).map((w) => (w === 'street' ? 'st' : w)).join(' ');
+  const distKey = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)[0] || '';
+  function findSchool(all, name, type, district) {
+    const n = schCore(name); if (!n || !all) return null;
+    const ok = (m) => m === n || m.startsWith(n + ' ') || n.startsWith(m + ' ') || m.endsWith(' ' + n) || (' ' + m + ' ').includes(' ' + n + ' ');
+    const rank = (list) => { const h = list.filter((x) => ok(schCore(x.Label_Name))); return h.find((x) => schCore(x.Label_Name) === n) || h.find((x) => distKey(x.DISTRICT) === district) || h[0] || null; };
+    const pub = all.filter((x) => x.TYPE !== 'Private');
+    return rank(pub.filter((x) => x.School_Type === type)) || rank(pub.filter((x) => distKey(x.DISTRICT) === district));
+  }
   async function schoolsAt(lng, lat) {
     const areas = await getJSON('data/schoolAttendanceAreas.geojson').catch(() => null);
     const a = areas && featureAt(areas, lng, lat);
@@ -1014,19 +1027,8 @@
   async function schoolsFor(a) {   // a = attendance-area properties
     const schools = await getJSON('data/schools.geojson').catch(() => null);
     const g = (k) => a['SchoolAttendanceAreas_Clipped.' + k], q = (k) => a['SAA_with_percentiles.csv.' + k];
-    // Match a school by name, but only among schools of the right level (and prefer the same district),
-    // so e.g. "Lincoln" (a high school) never matches "Lincoln Park Elementary".
-    const district = normName(g('Unified_SD_Name')).split(' ')[0];
-    const find = (name, type) => {
-      const n = normName(name); if (!n || !schools) return null;
-      const all = schools.features.map((f) => f.properties);
-      const pool = all.filter((x) => x.School_Type === type);
-      const rank = (list) => {
-        const hits = list.filter((x) => { const m = normName(x.Label_Name); return m === n || m.startsWith(n + ' ') || n.startsWith(m + ' '); });
-        return hits.find((x) => normName(x.Label_Name) === n) || hits.find((x) => normName(x.DISTRICT).startsWith(district)) || hits[0] || null;
-      };
-      return rank(pool) || rank(all.filter((x) => normName(x.DISTRICT).startsWith(district))) || null;
-    };
+    const all = schools ? schools.features.map((f) => f.properties) : null, district = distKey(g('Unified_SD_Name'));
+    const find = (name, type) => findSchool(all, name, type, district);
     const lv = [['Elementary', g('Grade_1_Choice1_Name'), q('ES_Percentile')], ['Middle', g('Grade_6_Choice1_Name'), q('MS_Percentile')], ['High', g('Grade_10_Choice1_Name'), q('HS_Percentile')]]
       .filter((r) => r[1]).map(([level, name, pctl]) => ({ level, name, pctl, s: find(name, { Elementary: 'ES', Middle: 'MS', High: 'HS' }[level]) }));
     return { district: g('Unified_SD_Name'), grade: q('SAA_Grade'), mean: q('SAA_Mean_Percentile'), url: g('SD_Catchment_URL'), schools: lv };

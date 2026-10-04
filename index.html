@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Portland">
-<link rel="stylesheet" href="styles.css?v=20261003g">
+<link rel="stylesheet" href="styles.css?v=20261003j">
 </head>
 <body>
 
@@ -131,8 +131,11 @@
 
   <!-- Attendance-area requirement not met -->
   <div class="alert" id="reqAlert" hidden role="alertdialog" aria-labelledby="reqMsg">
-    <div class="alert-card">
-      <div class="alert-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4.5 3.5 19h17z"/><path d="M12 10v4M12 16.6v.01"/></svg></div>
+    <div class="alert-card" id="reqCard">
+      <div class="alert-head">
+        <span class="alert-icon" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M2.75 9.5 12 5l9.25 4.5L12 14z"/><path d="M6.5 11.75v4c0 1.2 2.5 2.75 5.5 2.75s5.5-1.55 5.5-2.75v-4"/><path d="M21.25 9.5v5"/></svg></span>
+        <h3 id="reqTitle">Below the school requirements</h3>
+      </div>
       <p id="reqMsg">This home does not meet the current attendance area and high school grade requirements.</p>
       <div class="alert-grades" id="reqGrades"></div>
       <div class="alert-acts">
@@ -144,6 +147,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js?v=20261003b"></script>
+<script src="script.js?v=20261003f"></script>
 </body>
 </html>

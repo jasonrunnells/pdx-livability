@@ -12,6 +12,7 @@ const ICON = {
   explore: '<circle cx="12" cy="12" r="8"/><path d="m15.2 8.8-1.9 4.5-4.5 1.9 1.9-4.5z"/>',
   check: '<path d="m5.5 12.5 4 4 9-9"/>',
   cross: '<path d="M7 7l10 10M17 7 7 17"/>',
+  info: '<circle cx="12" cy="12" r="8.25"/><path d="M12 11v5M12 8v.01"/>',
 };
 const ic = (k) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 const KIND = {
@@ -129,20 +130,27 @@ function featureAt(fc, x, y) {
    A home qualifies when its attendance area's grade is C or better AND its assigned high school's grade is B or better. */
 const RANK = { A: 0, B: 1, C: 2, D: 3, F: 4 };
 const atLeast = (g, min) => { const L = String(g || '').trim().toUpperCase()[0]; return L in RANK && RANK[L] <= RANK[min]; };
-const normName = (v) => String(v || '').toLowerCase().replace(/&/g, 'and').replace(/\b(school|sch)\b/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+// Match an attendance area's school name to the schools layer. Names differ between the two files
+// ("Lake Oswego Senior High School" vs "Lake Oswego High", "Tobias Elementary School" vs "L C Tobias Elementary"),
+// so compare the core name only, search the right level first (public schools), then the same district.
+const SCH_DROP = new Set(['school', 'sch', 'senior', 'jr', 'k', '8', 'elementary', 'middle', 'high', 'es', 'ms', 'hs']);
+const schCore = (v) => String(v || '').split('/')[0].toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, ' ')
+  .split(/\s+/).filter((w) => w && !SCH_DROP.has(w)).map((w) => (w === 'street' ? 'st' : w)).join(' ');
+const distKey = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)[0] || '';
+function findSchool(all, name, type, district) {
+  const n = schCore(name); if (!n || !all) return null;
+  const ok = (m) => m === n || m.startsWith(n + ' ') || n.startsWith(m + ' ') || m.endsWith(' ' + n) || (' ' + m + ' ').includes(' ' + n + ' ');
+  const rank = (list) => { const h = list.filter((x) => ok(schCore(x.Label_Name))); return h.find((x) => schCore(x.Label_Name) === n) || h.find((x) => distKey(x.DISTRICT) === district) || h[0] || null; };
+  const pub = all.filter((x) => x.TYPE !== 'Private');
+  return rank(pub.filter((x) => x.School_Type === type)) || rank(pub.filter((x) => distKey(x.DISTRICT) === district));
+}
 async function schoolCheck(lng, lat) {
   const [areas, schools] = await Promise.all([getJSON(DATA + 'schoolAttendanceAreas.geojson'), getJSON(DATA + 'schools.geojson')]);
   const a = featureAt(areas, lng, lat);
   if (!a) return { ok: false, missing: true, none: true, area: null, hs: null, hsName: null };
   const g = (k) => a['SchoolAttendanceAreas_Clipped.' + k];
-  const district = normName(g('Unified_SD_Name')).split(' ')[0];
-  const hsName = g('Grade_10_Choice1_Name'), n = normName(hsName);
-  const all = schools.features.map((f) => f.properties);
-  const rank = (list) => {   // same matching as the map: right level, prefer same district
-    const hits = list.filter((x) => { const m = normName(x.Label_Name); return m === n || m.startsWith(n + ' ') || n.startsWith(m + ' '); });
-    return hits.find((x) => normName(x.Label_Name) === n) || hits.find((x) => normName(x.DISTRICT).startsWith(district)) || hits[0] || null;
-  };
-  const hs = n ? (rank(all.filter((x) => x.School_Type === 'HS')) || rank(all.filter((x) => normName(x.DISTRICT).startsWith(district)))) : null;
+  const hsName = g('Grade_10_Choice1_Name');
+  const hs = findSchool(schools.features.map((f) => f.properties), hsName, 'HS', distKey(g('Unified_SD_Name')));
   const area = a['SAA_with_percentiles.csv.SAA_Grade'], hsGrade = hs?.GRADE_1 || null;
   const has = (g) => /^[A-F]/i.test(String(g || '').trim());
   const fails = (has(area) && !atLeast(area, 'C')) || (has(hsGrade) && !atLeast(hsGrade, 'B'));
@@ -270,17 +278,21 @@ function invalidate() { picked = null; checkResult = null; cleared = false; runI
 
 const MSG_FAIL = 'This home does not meet the current attendance area and high school grade requirements.';
 const MSG_MISSING = 'This home contains insufficient attendance area and high school grade data. It is recommended to add the home and tell Jason to investigate further.';
-function showCheck(r) {
+const tilesHTML = (r) => r.none
+  ? '<div class="tile wide"><span>Attendance area</span><b>Not in our data</b></div>'
+  : `<div class="tile"><span>Area grade</span><b>${badge(r.area)}</b></div><div class="tile wide"><span>High school</span><b><em>${esc(shortHS(r.hsName))}</em>${badge(r.hs)}</b></div>`;
+function showCheck(r) {   // status line (colored icon + words) over the same gray tiles the map's cards use
+  const st = r.ok ? 'ok' : r.missing ? 'missing' : 'fail';
   checkBox.hidden = false;
-  checkBox.innerHTML = `<span class="${r.ok ? 'ok' : 'no'}">${ic(r.ok ? 'check' : 'cross')}</span>
-    <div class="check-text"><b>${r.ok ? 'Meets the school requirements' : r.missing ? 'Not enough school data' : 'Below the school requirements'}</b>
-    ${r.none ? '' : `<div class="grades">${gradesHTML(r)}</div>`}</div>`;
+  checkBox.className = 'check is-' + st;
+  checkBox.innerHTML = `<div class="check-status">${ic(r.ok ? 'check' : r.missing ? 'info' : 'cross')}<span>${r.ok ? 'Meets school requirements' : r.missing ? 'Not enough school data' : 'Below the school requirements'}</span></div>
+    <div class="check-tiles">${tilesHTML(r)}</div>`;
 }
 // Run the check for a located address; passes open the rest of the form, misses ask first
 async function runCheck(a) {
   const id = ++runId;
   picked = a; cleared = false; details.hidden = true; refresh();
-  checkBox.hidden = false; checkBox.innerHTML = '<span class="spin"></span><div class="check-text">Checking schools…</div>';
+  checkBox.hidden = false; checkBox.className = 'check is-busy'; checkBox.innerHTML = '<div class="check-status"><span class="spin"></span><span>Checking schools…</span></div>';
   let r;
   try { r = await schoolCheck(a.lng, a.lat); } catch (e) { r = { ok: false, missing: true, none: true }; }
   if (id !== runId) return;
@@ -288,8 +300,10 @@ async function runCheck(a) {
   if (r.ok) proceed();
   else {
     document.activeElement?.blur();   // close the phone keyboard before the message
+    $('#reqCard').className = 'alert-card ' + (r.missing ? 'is-missing' : 'is-fail');
+    $('#reqTitle').textContent = r.missing ? 'Not enough school data' : 'Below the school requirements';
     $('#reqMsg').textContent = r.missing ? MSG_MISSING : MSG_FAIL;
-    $('#reqGrades').innerHTML = r.none ? '<span>This address isn’t inside a school attendance area in our data.</span>' : gradesHTML(r);
+    $('#reqGrades').innerHTML = tilesHTML(r);
     alertBox.hidden = false; $('#reqAnyway').focus({ preventScroll: true });
   }
 }

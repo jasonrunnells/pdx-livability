@@ -332,3 +332,44 @@ h2 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -0.015em; }
   .sheet.kb { border-radius: 20px 20px 0 0; }
   .sheet.kb .formacts { padding-bottom: 12px; }   /* no home-bar gap needed while the keyboard is open */
 }
+
+/* Phones: Cancel / Save sit at the end of the form (not pinned) */
+@media (max-width: 799px) {
+  .formacts { position: static; margin: 18px 0 0; padding: 0 0 calc(18px + var(--safe-bottom)); background: none;
+              -webkit-backdrop-filter: none; backdrop-filter: none; border-top: 0; }
+  .sheet.kb .formacts { padding-bottom: 18px; }
+}
+
+/* Requirement message: styled like the map's cards (left-aligned title, short text, gray tiles, grade badges) */
+.alert-card { width: min(400px, 100%); padding: 20px 18px 18px; text-align: left; border: 1px solid var(--line); }
+.alert-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.alert-head h3 { margin: 0; font-size: 19px; font-weight: 750; letter-spacing: -0.01em; line-height: 1.2; }
+.alert-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin: 0; border-radius: 12px; }
+.alert-icon .ic { width: 22px; height: 22px; }
+.alert-card.is-fail .alert-icon { background: color-mix(in srgb, var(--red) 13%, transparent); color: var(--red); }
+.alert-card.is-missing .alert-icon { background: color-mix(in srgb, #C99117 16%, transparent); color: #B07D0E; }
+@media (prefers-color-scheme: dark) { .alert-card.is-missing .alert-icon { color: #E5B44A; } }
+.alert-card p { margin: 0 0 14px; font-size: 14.5px; font-weight: 500; line-height: 1.45; color: var(--ink-soft); }
+.alert-grades { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 0 0 16px; justify-content: stretch; }
+.alert-grades .tile { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 9px 12px 10px; border-radius: 12px; background: var(--tint); }
+.alert-grades .tile.wide:only-child { grid-column: 1 / -1; }
+.alert-grades .tile > span { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
+.alert-grades .tile b { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 22px; font-size: 15px; font-weight: 650; color: var(--ink); }
+.alert-grades .tile em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* School check under the address: a colored status line over two gray tiles (same tiles as the map cards / alert) */
+.check { display: block; margin-top: 12px; padding: 0; background: none; border-radius: 0; }
+.check-status { display: flex; align-items: center; gap: 7px; margin: 0 2px 8px; font-size: 13.5px; font-weight: 700; }
+.check-status .ic { width: 18px; height: 18px; stroke-width: 2.3; }
+.check.is-ok .check-status { color: var(--teal); }
+.check.is-fail .check-status { color: var(--red); }
+.check.is-missing .check-status { color: #B07D0E; }
+.check.is-busy .check-status { color: var(--ink-soft); font-weight: 600; }
+@media (prefers-color-scheme: dark) { .check.is-missing .check-status { color: #E5B44A; } }
+.check .spin { width: 16px; height: 16px; border-width: 2px; }
+.check-tiles, .alert-grades { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+.check-tiles .tile, .alert-grades .tile { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 9px 12px 10px; border-radius: 12px; background: var(--tint); }
+.check-tiles .tile.wide:only-child { grid-column: 1 / -1; }
+.check-tiles .tile > span { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
+.check-tiles .tile b { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 22px; font-size: 15px; font-weight: 650; color: var(--ink); }
+.check-tiles .tile em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
