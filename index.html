@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Portland">
-<link rel="stylesheet" href="styles.css?v=20261004a">
+<link rel="stylesheet" href="styles.css?v=20261004b">
 </head>
 <body>
 
@@ -115,6 +115,11 @@
     </div>
 
     <div class="details" id="details" hidden>
+      <label class="prio-switch">
+        <input type="checkbox" name="priority">
+        <span class="sw" aria-hidden="true"></span>
+        <span class="prio-text"><b>Priority visit</b><small>A must see home on our next trip</small></span>
+      </label>
       <div class="grid2">
         <div><label class="lbl" for="priceIn">Price</label><input id="priceIn" name="price" inputmode="numeric" placeholder="$"></div>
         <div><label class="lbl" for="sqftIn">Sq ft</label><input id="sqftIn" name="sqft" inputmode="numeric"></div>
@@ -154,6 +159,6 @@
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js?v=20261004b"></script>
+<script src="script.js?v=20261004c"></script>
 </body>
 </html>

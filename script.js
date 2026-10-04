@@ -11,6 +11,7 @@ const ICON = {
   observation: '<path d="M2.75 12S6 6 12 6s9.25 6 9.25 6S18 18 12 18s-9.25-6-9.25-6Z"/><circle cx="12" cy="12" r="2.75"/>',
   explore: '<circle cx="12" cy="12" r="8"/><path d="m15.2 8.8-1.9 4.5-4.5 1.9 1.9-4.5z"/>',
   check: '<path d="m5.5 12.5 4 4 9-9"/>',
+  flag: '<path d="M5.5 20.5v-16M5.5 4.75h11.25l-2.5 4 2.5 4H5.5"/>',
   cross: '<path d="M7 7l10 10M17 7 7 17"/>',
   info: '<circle cx="12" cy="12" r="8.25"/><path d="M12 11v5M12 8v.01"/>',
 };
@@ -34,7 +35,7 @@ function updateCard(r) {
   const photo = (r.photos || [])[0];
   return `<a class="card" style="--dot:${k.color}" href="maps/explorer/index.html?pin=${r.id}">
     <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic(ICON[r.kind] ? r.kind : 'explore')}</div>`}
-      <span class="chip"><i></i>${k.label}</span></div>
+      <span class="chip"><i></i>${k.label}</span>${r.kind === 'home' && r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}</div>
     <div class="body"><div class="t">${esc(t)}</div><div class="w">${esc(who)}</div></div>
   </a>`;
 }
@@ -43,7 +44,7 @@ function homeCard(r) {
   const photo = (r.photos || [])[0];
   return `<a class="card home-card" style="--dot:${KIND.home.color}" href="maps/explorer/index.html?pin=${r.id}">
     <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic('home')}</div>`}
-      ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}
+      ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}${r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}
       ${specs ? `<div class="specbar">${specs}</div>` : ''}</div>
     <div class="body"><div class="price">${r.price ? usd(r.price) : 'No price'}</div><div class="addr">${esc(r.address || '')}</div></div>
   </a>`;
@@ -137,7 +138,7 @@ function peekHTML(r) {
                  r.sqft ? `<span><b>${(+r.sqft).toLocaleString()}</b> sq ft</span>` : ''].join('');
   const rating = +r.rating > 0 ? `<span class="peek-rating">${STAR_SM}${(+r.rating).toFixed(1)}</span>` : '';
   return `<div class="peek-card">
-    <div class="peek-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : ic('home')}${r.visited ? `<span class="peek-visited">${ic('check')}</span>` : ''}</div>
+    <div class="peek-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : ic('home')}${r.visited ? `<span class="peek-visited">${ic('check')}</span>` : ''}${r.priority ? `<span class="peek-prio">${ic('flag')}</span>` : ''}</div>
     <div class="peek-body">
       <div class="peek-top">${facts ? `<div class="peek-facts">${facts}</div>` : ''}${rating}</div>
       <div class="peek-sub">${[place.hood ? `<span class="nb-hood">${esc(place.hood)}</span>` : '', place.city ? `<span class="nb-city">${esc(place.city)}</span>` : ''].filter(Boolean).join(' · ')}</div>
@@ -512,9 +513,10 @@ form.addEventListener('submit', async (ev) => {
     const urls = []; for (const f of files) urls.push(await upload(f));
     const rec = { kind: 'home', lat: picked.lat, lng: picked.lng, address: addrIn.value.trim(),
       link: toUrl(form.link.value.trim() || null), price: numOf(form.price.value), beds: numOf(form.beds.value),
-      baths: numOf(form.baths.value), sqft: numOf(form.sqft.value), note: form.note.value.trim() || null, photos: urls };
+      baths: numOf(form.baths.value), sqft: numOf(form.sqft.value), note: form.note.value.trim() || null, photos: urls,
+      ...(form.priority.checked ? { priority: true } : {}) };
     const { error } = await sb.from('places').insert({ ...rec, created_by_name: user.user_metadata?.name || null });
-    if (error) throw error;
+    if (error) throw (/priority/i.test(error.message) ? Error('The “Priority visit” option needs one setup step in Supabase first (see the note from Claude).') : error);
     closeSheet();
   } catch (x) { homeErr.textContent = x.message || 'Could not save. Check your connection.'; refresh(); }
 });

@@ -144,7 +144,7 @@
   let homesData = null;
   const homesRows = new Map();   // full rows by id, for the home card
   const homeFeature = (r) => ({ type: 'Feature', id: r.id, geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
-    properties: { id: r.id, address: r.address || r.title || 'Home', price: r.price, visited: !!r.visited } });
+    properties: { id: r.id, address: r.address || r.title || 'Home', price: r.price, visited: !!r.visited, priority: !!r.priority } });
   async function loadHomes() {
     if (!sb) throw new Error('Could not reach the shared database.');
     const { data: { session } } = await sb.auth.getSession();
@@ -185,13 +185,16 @@
       if (overlayOn[o.key] && o.file) overlayLoaded[o.key] = true;
       const data = o.load ? (homesData || EMPTY) : (overlayLoaded[o.key] ? o.file : EMPTY);
       out['ov-' + o.key] = o.group === 'places'
-        ? { type: 'geojson', data, cluster: true, clusterRadius: 42, clusterMaxZoom: 15, ...(o.load ? { promoteId: 'id' } : { generateId: true }) }
+        ? { type: 'geojson', data, cluster: true, clusterRadius: 42, clusterMaxZoom: 15,
+            // homes: each cluster remembers whether it holds a priority home (prio = 1), so it can be styled like one
+            ...(o.load ? { promoteId: 'id', clusterProperties: { prio: ['max', ['case', ['boolean', ['get', 'priority'], false], 1, 0]] } } : { generateId: true }) }
         : { type: 'geojson', data, generateId: true };
     }
     return out;
   }
 
   // Layers for each overlay, split into fills (under streets), lines and labels (on top).
+  const PRIORITY = '#F59E0B';   // amber: priority-visit homes
   function overlayLayers(c, halo) {
     const vis = (k) => ({ visibility: overlayOn[k] ? 'visible' : 'none' });
     const L = { fills: [], lines: [], labels: [] };
@@ -249,12 +252,30 @@
         paint: { 'circle-color': c[o.color], 'circle-opacity': 0.92,
                  'circle-radius': ['step', ['get', 'point_count'], 14, 10, 17, 50, 21],
                  'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 3 } });
+      if (o.key === 'pHomes') {   // clusters holding a priority home: amber halo outside the white ring + small flag badge
+        const halo = { id: 'pHomes-halo', type: 'circle', source: 'ov-pHomes', filter: ['all', ['has', 'point_count'], ['==', ['get', 'prio'], 1]], layout: vis(o.key),
+          paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['step', ['get', 'point_count'], 14, 10, 17, 50, 21],
+                   'circle-stroke-color': PRIORITY, 'circle-stroke-width': 3.5, 'circle-translate': [0, 0],
+                   'circle-stroke-opacity': 1, 'circle-pitch-alignment': 'viewport' } };
+        // draw the halo ring just outside the white ring: same radius + 3 px white + 3.5 px amber
+        halo.paint['circle-radius'] = ['step', ['get', 'point_count'], 17, 10, 20, 50, 24];
+        L.points.splice(L.points.length - 1, 0, halo);
+        L.points.push({ id: 'pHomes-badge', type: 'symbol', source: 'ov-pHomes', filter: ['all', ['has', 'point_count'], ['==', ['get', 'prio'], 1]],
+          layout: { ...vis(o.key), 'icon-image': 'prio-badge', 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+                    'icon-offset': ['step', ['get', 'point_count'], ['literal', [14, -14]], 10, ['literal', [16, -16]], 50, ['literal', [19, -19]]] } });
+      }
       L.points.push({ id: o.key + '-count', type: 'symbol', source: 'ov-' + o.key, filter: ['has', 'point_count'],
         layout: { ...vis(o.key), 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Open Sans Bold'],
                   'text-size': 14, 'text-allow-overlap': true, 'text-ignore-placement': true },
         paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(0,0,0,0.28)', 'text-halo-width': 0.8 } });
       L.points.push({ id: o.key + '-dot', type: 'symbol', source: 'ov-' + o.key, filter: ['!', ['has', 'point_count']],
-        layout: { ...vis(o.key), 'icon-image': `pt-${o.key}-${c === PALETTE.dark ? 'dark' : 'light'}`,
+        layout: { ...vis(o.key),
+                  // priority homes get their own marker (amber ring + flag badge) and draw on top; they still cluster normally
+                  'icon-image': o.key === 'pHomes'
+                    ? ['concat', `pt-pHomes-${c === PALETTE.dark ? 'dark' : 'light'}`,
+                       ['case', ['boolean', ['get', 'visited'], false], '-v', ''], ['case', ['boolean', ['get', 'priority'], false], '-p', '']]
+                    : `pt-${o.key}-${c === PALETTE.dark ? 'dark' : 'light'}`,
+                  ...(o.key === 'pHomes' ? { 'symbol-sort-key': ['case', ['boolean', ['get', 'priority'], false], 1, 0] } : {}),
                   'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.72, 13, 0.9, 16, 1],
                   'icon-allow-overlap': true, 'icon-ignore-placement': true } });
       L.labels.push({ id: o.key + '-label', type: 'symbol', source: 'ov-' + o.key, minzoom: 13.5, filter: ['!', ['has', 'point_count']],
@@ -266,7 +287,7 @@
     }
     return L;
   }
-  const overlayIds = (key) => (key.startsWith('p') ? [key + '-cluster', key + '-count', key + '-dot', key + '-label', key + '-pick'] : null) || ({
+  const overlayIds = (key) => (key.startsWith('p') ? [key + '-halo', key + '-cluster', key + '-badge', key + '-count', key + '-dot', key + '-label', key + '-pick'] : null) || ({
     hoods: ['hoods-fill', 'hoods-line', 'hoods-label'],
     tracts: ['tracts-fill', 'tracts-line'],
     cities: ['cities-fill', 'cities-line', 'cities-label'],
@@ -535,19 +556,30 @@
     pGrocery: { stroke: 'M3.5 5.5h2.3l2 8.6h8.9l1.8-6.4H6.6', dots: [[9.3, 17.6], [15.6, 17.6]] },
     pFood:    { stroke: 'M7.5 4.5v15M5.5 4.5v4.2a2 2 0 0 0 4 0V4.5M16.5 19.5v-15c-2 1.6-2.7 5-2.7 7.8h2.7' },
   };
-  function drawPoint(key, theme) {
+  const VISITED = { light: '#0F9D76', dark: '#14B88A' };   // visited homes: green with a check
+  function drawPoint(key, theme, priority = false, visited = false) {
     const S = 76, cv = document.createElement('canvas'); cv.width = cv.height = S;
-    const g = cv.getContext('2d'), col = PALETTE[theme][OVERLAYS.find((o) => o.key === key).color], cx = S / 2, cy = S / 2 - 1;
+    const g = cv.getContext('2d'), col = visited ? VISITED[theme] : PALETTE[theme][OVERLAYS.find((o) => o.key === key).color], cx = S / 2, cy = S / 2 - 1;
     g.save(); g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 6; g.shadowOffsetY = 2;
-    g.beginPath(); g.arc(cx, cy, 27, 0, Math.PI * 2); g.fillStyle = '#FFFFFF'; g.fill(); g.restore();
-    g.beginPath(); g.arc(cx, cy, 23, 0, Math.PI * 2); g.fillStyle = col; g.fill();
-    const gl = GLYPH[key], sc = 1.5;
+    // priority: amber outer ring, then a clear white gap, then the normal disc (so amber never touches the red)
+    g.beginPath(); g.arc(cx, cy, priority ? 31 : 27, 0, Math.PI * 2); g.fillStyle = priority ? PRIORITY : '#FFFFFF'; g.fill(); g.restore();
+    if (priority) { g.beginPath(); g.arc(cx, cy, 26.5, 0, Math.PI * 2); g.fillStyle = '#FFFFFF'; g.fill(); }
+    g.beginPath(); g.arc(cx, cy, priority ? 21.5 : 23, 0, Math.PI * 2); g.fillStyle = col; g.fill();
+    const gl = visited ? { stroke: 'M6.5 12.4 10.2 16 17.5 8.2' } : GLYPH[key], sc = 1.5;
     g.save(); g.translate(cx - 12 * sc, cy - 12 * sc); g.scale(sc, sc);
     g.fillStyle = '#FFFFFF'; g.strokeStyle = '#FFFFFF'; g.lineWidth = 2.1; g.lineCap = 'round'; g.lineJoin = 'round';
     if (gl.fill) g.fill(new Path2D(gl.fill));
     if (gl.stroke) g.stroke(new Path2D(gl.stroke));
     for (const [x, y] of gl.dots || []) { g.beginPath(); g.arc(x, y, 1.6, 0, Math.PI * 2); g.fill(); }
     g.restore();
+    if (priority) {   // small amber badge with a white flag, top-right
+      const bx = cx + 21, by = cy - 21;
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
+      g.beginPath(); g.arc(bx, by, 12, 0, Math.PI * 2); g.fillStyle = '#FFFFFF'; g.fill(); g.restore();
+      g.beginPath(); g.arc(bx, by, 9.5, 0, Math.PI * 2); g.fillStyle = PRIORITY; g.fill();
+      g.save(); g.translate(bx - 6, by - 6); g.scale(0.5, 0.5); g.strokeStyle = '#FFFFFF'; g.lineWidth = 3.4; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.stroke(new Path2D('M5.5 20.5v-16M5.5 4.75h11.25l-2.5 4 2.5 4H5.5')); g.restore();
+    }
     return cv;
   }
 
@@ -641,9 +673,18 @@
     return g.getImageData(0, 0, S, S);
   }
   map.on('styleimagemissing', (e) => {
-    const m = /^pt-(\w+)-(light|dark)$/.exec(e.id);
-    if (m && GLYPH[m[1]] && !map.hasImage(e.id)) { const cv = drawPoint(m[1], m[2]); map.addImage(e.id, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height), { pixelRatio: 2 }); return; }
+    const m = /^pt-(\w+)-(light|dark)(-v)?(-p)?$/.exec(e.id);
+    if (m && GLYPH[m[1]] && !map.hasImage(e.id)) { const cv = drawPoint(m[1], m[2], !!m[4], !!m[3]); map.addImage(e.id, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height), { pixelRatio: 2 }); return; }
     if ((e.id === 'sym-hospital' || e.id === 'sym-fire') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
+    if (e.id === 'prio-badge' && !map.hasImage(e.id)) {   // flag badge for priority clusters
+      const S = 30, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), c0 = S / 2;
+      g.save(); g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
+      g.beginPath(); g.arc(c0, c0, 12, 0, Math.PI * 2); g.fillStyle = '#FFFFFF'; g.fill(); g.restore();
+      g.beginPath(); g.arc(c0, c0, 9.5, 0, Math.PI * 2); g.fillStyle = PRIORITY; g.fill();
+      g.save(); g.translate(c0 - 6, c0 - 6); g.scale(0.5, 0.5); g.strokeStyle = '#FFFFFF'; g.lineWidth = 3.4; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.stroke(new Path2D('M5.5 20.5v-16M5.5 4.75h11.25l-2.5 4 2.5 4H5.5')); g.restore();
+      map.addImage(e.id, g.getImageData(0, 0, S, S), { pixelRatio: 2 });
+    }
   });
 
   /* ---------- Messages ---------- */
@@ -1136,7 +1177,8 @@
     const nb = [hood ? `<span class="nb-hood">${esc(hood.Name)}</span>` : null, city ? `<span class="nb-city">${esc(city.NAME)}</span>` : null].filter(Boolean).join(' · ');
     const who = [r.created_by_name, r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null].filter(Boolean).join(' · ');
     const photos = r.photos || [];
-    return { hood, html: `<div class="sec"><h2 class="addr">${esc(r.address || r.title || 'Home')}</h2>${nb ? `<div class="sub">${nb}</div>` : ''}<div class="sub">Home${r.visited ? ' · Visited' : ''}${who ? ' · ' + esc(who) : ''}</div></div>
+    return { hood, html: `<div class="sec"><h2 class="addr">${esc(r.address || r.title || 'Home')}</h2>${nb ? `<div class="sub">${nb}</div>` : ''}<div class="sub">Home${r.visited ? ' · Visited' : ''}${who ? ' · ' + esc(who) : ''}</div>
+      <button type="button" class="prio-toggle${r.priority ? ' on' : ''}" data-act="prio" aria-pressed="${!!r.priority}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 20.5v-16M5.5 4.75h11.25l-2.5 4 2.5 4H5.5"/></svg>Priority</button></div>
     <div class="sec"><div class="price-row"><div class="big">${r.price ? usd(r.price) : 'No price'}</div>${starsHTML(`data-kind="home" data-id="${esc(r.id)}"`, r.rating || 0)}</div>
       <div class="facts"><div><span>Beds</span><b>${esc(r.beds ?? '–')}</b></div><div><span>Baths</span><b>${esc(r.baths ?? '–')}</b></div><div><span>Sq ft</span><b>${r.sqft ? r.sqft.toLocaleString() : '–'}</b></div></div>
       ${schoolStrip(sa)}</div>
@@ -1232,7 +1274,8 @@
       if (error) return toast(error.message);
       homesRows.delete(id); refreshHomes(); closeSheet(); return;
     }
-    const { data, error } = await sb.from('places').update({ visited: !r.visited }).eq('id', id).select().single();
+    const patch = b.dataset.act === 'prio' ? { priority: !r.priority } : { visited: !r.visited };
+    const { data, error } = await sb.from('places').update(patch).eq('id', id).select().single();
     if (error) return toast(error.message);
     homesRows.set(id, data); refreshHomes(); openHome(id);
   }
@@ -1249,11 +1292,16 @@
   function homeForm(o) {
     const pics = [...(o.photos || [])], files = [], v = (x) => esc(x ?? '');
     openSheet(`<h2>Edit home</h2><form class="pf">
-      <input name="address" placeholder="Address" value="${v(o.address)}">
-      <input name="link" inputmode="url" placeholder="Listing link" value="${v(o.link)}">
-      <input name="price" inputmode="numeric" placeholder="Price" value="${v(o.price)}">
-      <div class="pr"><input name="beds" inputmode="decimal" placeholder="Beds" value="${v(o.beds)}"><input name="baths" inputmode="decimal" placeholder="Baths" value="${v(o.baths)}"><input name="sqft" inputmode="numeric" placeholder="Sq ft" value="${v(o.sqft)}"></div>
-      <textarea name="note" rows="3" placeholder="Notes">${v(o.note)}</textarea>
+      <label class="pl">Address</label><input name="address" placeholder="Address" value="${v(o.address)}">
+      <label class="pl">Listing link</label><input name="link" inputmode="url" placeholder="Zillow or other listing link" value="${v(o.link)}">
+      <label class="pf-prio"><input type="checkbox" name="priority" ${o.priority ? 'checked' : ''}><span class="sw" aria-hidden="true"></span><span class="pt"><b>Priority visit</b><small>A must see home on our next trip</small></span></label>
+      <div class="pgrid">
+        <div><label class="pl">Price</label><input name="price" inputmode="numeric" placeholder="$" value="${v(o.price)}"></div>
+        <div><label class="pl">Sq ft</label><input name="sqft" inputmode="numeric" value="${v(o.sqft)}"></div>
+        <div><label class="pl">Beds</label><input name="beds" inputmode="decimal" value="${v(o.beds)}"></div>
+        <div><label class="pl">Baths</label><input name="baths" inputmode="decimal" value="${v(o.baths)}"></div>
+      </div>
+      <label class="pl">Notes</label><textarea name="note" rows="3">${v(o.note)}</textarea>
       <label class="pph">Add photos<input type="file" accept="image/*" multiple hidden></label><div class="pth"></div>
       <div class="perr"></div><button class="btn">Save</button></form>`);
     sheetLock = true; sheetBody.onclick = null;
@@ -1269,7 +1317,8 @@
       try {
         const urls = []; for (const x of files) urls.push(await upload(x));
         const val = (n) => gv(n) || null;
-        const rec = { address: val('address'), link: norm(val('link')), price: num(gv('price')), beds: num(gv('beds')), baths: num(gv('baths')), sqft: num(gv('sqft')), note: val('note'), photos: [...pics, ...urls] };
+        const rec = { address: val('address'), link: norm(val('link')), price: num(gv('price')), beds: num(gv('beds')), baths: num(gv('baths')), sqft: num(gv('sqft')), note: val('note'), photos: [...pics, ...urls],
+          ...(!!f.elements.priority?.checked !== !!o.priority ? { priority: !!f.elements.priority.checked } : {}) };   // only sent when changed
         const { data, error } = await sb.from('places').update(rec).eq('id', o.id).select().single();
         if (error) throw error;
         homesRows.set(o.id, data); refreshHomes(); openHome(o.id);
