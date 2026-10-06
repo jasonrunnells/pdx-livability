@@ -361,7 +361,7 @@ const panel = $('#hdPanel'), scrim = $('#hdScrim'), frame = $('#hdFrame');
 function openPanel(id) {
   if (openId === id && !panel.hidden) return;
   openId = id;
-  frame.src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1`;
+  frame.src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1${matchMedia('(min-width: 800px)').matches ? '&wide=1' : ''}`;
   if (panel.hidden) {
     panel.hidden = false; scrim.hidden = false;
     lockY = scrollY; Object.assign(document.body.style, { position: 'fixed', top: -lockY + 'px', left: '0', right: '0' });

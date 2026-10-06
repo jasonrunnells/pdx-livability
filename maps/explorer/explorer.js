@@ -7,8 +7,10 @@
   'use strict';
   // Embed mode (?embed=1): the Homes dashboard shows this map's home card inside a panel. The map runs hidden
   // behind the card (so lot data still loads), the card fills the page, and closing it tells the dashboard.
-  const EMBED = new URLSearchParams(location.search).has('embed');
+  const EMBED = new URLSearchParams(location.search).has('embed'), EMBED_WIDE = EMBED && new URLSearchParams(location.search).has('wide');
   if (EMBED) document.documentElement.classList.add('embed');
+  if (EMBED_WIDE) document.documentElement.classList.add('wide');
+  const tellClosed = () => { try { parent.postMessage({ type: 'pdx-close-card' }, location.origin); } catch { /* not framed */ } };
 
   /* ---------- Settings ---------- */
   const TILES = {
@@ -784,7 +786,8 @@
     wireCard();
   }
   function closeSheet() {
-    if (EMBED) { try { parent.postMessage({ type: 'pdx-close-card' }, location.origin); } catch { /* not framed */ } return; }
+    if (EMBED_WIDE) { tellClosed(); return; }   // desktop panel: the page closes it
+    if (EMBED) setTimeout(tellClosed, 320);      // phone: slide the card down like the map, then tell the page
     sheetLock = false; sheetBody.onclick = null;
     sheet.classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); document.body.classList.remove('sheet-open');
     clearSelection();
@@ -851,7 +854,7 @@
 
   let drag = null;
   sheet.addEventListener('touchstart', (e) => {
-    if (EMBED) { drag = null; return; }   // embedded card is always full height: no peek/drag
+    if (EMBED_WIDE) { drag = null; return; }   // desktop panel is always full height: no peek/drag
     if (!mobile.matches || !sheet.classList.contains('open') || e.touches.length > 1) { drag = null; return; }
     if (e.target.closest('.stars, input, textarea, select')) { drag = null; return; }
     const t = e.touches[0];

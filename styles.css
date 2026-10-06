@@ -880,3 +880,10 @@ a.brand { color: inherit; text-decoration: none; }
 .hd-page .hd-top { background: var(--bg) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .hd-page .hd-filters, .hd-page .chip, .hd-page .hd-panel-top .x { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .hd-page .chip { background: var(--surface); }
+
+/* Home card panel on phones: a transparent full-screen frame so the map's own card can peek, expand and be pulled down */
+@media (max-width: 799px) {
+  .hd-panel { background: transparent; box-shadow: none; padding: 0; animation: none; }
+  .hd-frame { background: transparent; }
+  #hdScrim, #cardScrim { background: rgba(15, 18, 20, 0.35); }
+}

@@ -978,24 +978,32 @@ html, body {
 /* ---------- Embed mode (Homes dashboard panel): only the home card, full page ---------- */
 html.embed .fab, html.embed .search, html.embed .maplibregl-ctrl-top-right, html.embed .maplibregl-ctrl-bottom-left,
 html.embed .maplibregl-ctrl-bottom-right, html.embed .layers-panel, html.embed .map-toast { display: none !important; }
-html.embed .sheet, html.embed .sheet.open, html.embed .sheet.full {
+/* Wide embed (desktop side panel): the card fills the panel, buttons always pinned */
+html.embed.wide .sheet, html.embed.wide .sheet.open, html.embed.wide .sheet.full {
   position: fixed; inset: 0 !important; width: auto !important; height: auto !important; max-height: none !important;
   border-radius: 0 !important; box-shadow: none !important; transform: none !important; transition: none !important;
 }
-html.embed .sheet:not(.open) { visibility: visible; }
-html.embed .sheet:not(.open) .body::before { content: "Loading home…"; display: block; padding: 24px 2px; color: var(--ink-soft); font-family: var(--font); }
-html.embed .sheet .body { overflow-y: auto !important; }
-html.embed .sheet-top .grab { display: none; }
+html.embed.wide .sheet:not(.open) { visibility: visible; }
+html.embed.wide .sheet:not(.open) .body::before { content: "Loading home…"; display: block; padding: 24px 2px; color: var(--ink-soft); font-family: var(--font); }
+html.embed.wide .sheet .body { overflow-y: auto !important; }
+html.embed.wide .sheet-top .grab { display: none; }
 /* button bar always pinned with the frosted glass, plus a full-width View on map button */
-html.embed .sheet .body { padding-bottom: 0 !important; }
-html.embed .sheet .foot {
+html.embed.wide .sheet .body { padding-bottom: 0 !important; }
+html.embed.wide .sheet .foot {
   position: sticky; bottom: 0; z-index: 3; margin: 14px -18px 0; padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--surface-solid) 55%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8);
   border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); box-shadow: 0 -6px 18px -12px rgba(0, 0, 0, 0.28); animation: none !important;
 }
+html.embed.wide .sheet .btn.view-map { margin: 0 0 8px; background: var(--ink); color: var(--surface-solid); white-space: nowrap; }
+html.embed.wide .sheet .foot .btn { white-space: nowrap; }
 html.embed .sheet .btn.view-map { margin: 0 0 8px; background: var(--ink); color: var(--surface-solid); white-space: nowrap; }
 html.embed .sheet .foot .btn { white-space: nowrap; }
+/* Phone embed: behaves exactly like the map — card peeks up from the bottom, drag up for full screen, pull down
+   or tap above it to close. The map runs invisibly underneath (taps on it close the card, as on the map). */
+html.embed:not(.wide), html.embed:not(.wide) body { background: transparent !important; }
+html.embed:not(.wide) #map { opacity: 0; }
+
 
 /* home card: school-rule note under the high school / area grade tiles */
 .sheet .rule-note { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 13px; font-weight: 700; }

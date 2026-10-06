@@ -60,7 +60,7 @@ function render(rows) {
 let cardY = 0;
 function openCard(id) {
   const panel = $('#cardPanel'), scrim = $('#cardScrim');
-  $('#cardFrame').src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1`;
+  $('#cardFrame').src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1${matchMedia('(min-width: 800px)').matches ? '&wide=1' : ''}`;
   if (panel.hidden) { panel.hidden = false; scrim.hidden = false; cardY = scrollY; Object.assign(document.body.style, { position: 'fixed', top: -cardY + 'px', left: '0', right: '0' }); }
 }
 function closeCard() {
