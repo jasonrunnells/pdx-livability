@@ -875,3 +875,8 @@ a.brand { color: inherit; text-decoration: none; }
 .btn.outline.dash { background: var(--ink); color: var(--surface); }
 .btn.outline.dash:hover { background: color-mix(in srgb, var(--ink) 85%, var(--surface)); }
 .hd-grid { position: relative; }   /* lets dropped cards fade out in place */
+
+/* Homes page: no frosted glass anywhere — solid page color for the sticky header, solid chips on photos */
+.hd-page .hd-top { background: var(--bg) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.hd-page .hd-filters, .hd-page .chip, .hd-page .hd-panel-top .x { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.hd-page .chip { background: var(--surface); }
