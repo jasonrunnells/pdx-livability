@@ -616,3 +616,261 @@ h2 { margin: 0; font-size: 21px; font-weight: 750; letter-spacing: -0.015em; }
 .prio-text { display: grid; gap: 1px; }
 .prio-text b { font-size: 15px; font-weight: 650; }
 .prio-text small { font-size: 12.5px; color: var(--ink-soft); }
+
+/* ==========================================================================
+   Homes dashboard (homes.html)
+   ========================================================================== */
+a.brand { color: inherit; text-decoration: none; }
+.hd-head { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 14px; }
+.hd-back { display: inline-flex; align-items: center; gap: 2px; align-self: flex-start; margin-left: -4px; color: var(--ink-soft); font-size: 14px; font-weight: 650; text-decoration: none; }
+.hd-back .ic { width: 18px; height: 18px; }
+.hd-back:hover { color: var(--ink); }
+.hd-title { font-size: clamp(28px, 6vw, 38px); }
+.hd-title .count { font-size: 0.55em; font-weight: 650; }
+
+/* filters */
+.hd-filters { position: sticky; top: 0; z-index: 5; display: grid; gap: 10px; margin: 0 -16px 16px; padding: 10px 16px 12px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+@media (min-width: 800px) { .hd-filters { margin: 0 -32px 20px; padding: 12px 32px 14px; } }
+.hd-search { position: relative; }
+.hd-search .ic { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); width: 19px; height: 19px; }
+.hd-search input { padding-left: 40px; min-height: 44px; }
+.hd-search input::-webkit-search-cancel-button { cursor: pointer; }
+.hd-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.hd-chips::-webkit-scrollbar { display: none; }
+.hd-chip { flex: none; padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13.5px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.hd-chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.hd-chip[data-f="priority"].on { background: #F59E0B; border-color: #F59E0B; color: #FFFFFF; }
+.hd-chip[data-f="schools"].on { background: var(--teal); border-color: var(--teal); color: #FFFFFF; }
+.hd-selects { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; }
+.hd-selects label { display: grid; gap: 3px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
+.hd-selects select { min-height: 38px; padding: 0 30px 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0; appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2362676C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; background-size: 16px; cursor: pointer; }
+.hd-reset { align-self: center; margin-left: auto; }
+@media (max-width: 799px) { .hd-selects label { flex: 1 1 calc(50% - 10px); } .hd-selects select { width: 100%; } .hd-reset { margin-left: 0; } }
+
+/* grid of cards */
+.hd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+@media (max-width: 560px) { .hd-grid { grid-template-columns: 1fr; gap: 12px; } }
+.hd-grid > .empty { grid-column: 1 / -1; }
+.hd-card { display: flex; flex-direction: column; overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); box-shadow: var(--shadow-sm); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.hd-card.on { outline: 2.5px solid var(--blue); outline-offset: -1px; }
+.hd-img { position: relative; aspect-ratio: 16 / 10; background: var(--tint); }
+.hd-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hd-img .ph { display: grid; place-items: center; height: 100%; color: var(--teal); }
+.hd-img .ph .ic { width: 34px; height: 34px; opacity: 0.7; }
+.hd-img .visited { right: auto; left: 10px; }
+.hd-pcount { position: absolute; right: 10px; bottom: 8px; padding: 2px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.5); color: #FFFFFF; font-size: 11.5px; font-weight: 700; }
+.hd-img .specbar { padding-right: 46px; }
+.hd-body { display: grid; gap: 3px; padding: 11px 13px 13px; }
+.hd-r1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hd-r1 .price { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.hd-rate { display: inline-flex; align-items: center; gap: 3px; font-size: 13.5px; font-weight: 750; }
+.hd-rate svg, .stats .star { width: 14px; height: 14px; fill: #F7B230; }
+.hd-body .addr { font-size: 14px; font-weight: 650; }
+.hd-place { font-size: 13px; font-weight: 700; color: var(--ink-soft); min-height: 1.3em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hd-place .nb-hood { color: var(--hood); } .hd-place .nb-city { color: var(--city); }
+.hd-schools { display: flex; align-items: center; gap: 6px 12px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink-soft); min-height: 31px; min-width: 0; }
+.hd-schools > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.hd-hs { flex: 1; min-width: 0; }
+.hd-hs em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hd-q { flex: none; display: grid !important; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #FFFFFF; }
+.hd-q .ic { width: 12px; height: 12px; stroke-width: 2.8; }
+.hd-q.ok { background: var(--teal); } .hd-q.fail { background: var(--red); } .hd-q.missing { background: #C99117; }
+
+/* detail panel: right-side drawer on desktop, full screen on phones */
+.hd-panel { position: fixed; z-index: 31; top: 0; right: 0; bottom: 0; width: min(480px, 100%); display: flex; flex-direction: column;
+  background: var(--surface); box-shadow: var(--shadow); animation: hd-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes hd-in { from { transform: translateX(40px); opacity: 0; } }
+@media (max-width: 799px) { .hd-panel { width: 100%; animation: up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); } }
+.hd-panel-top { position: absolute; top: calc(10px + var(--safe-top)); right: 10px; z-index: 3; }
+.hd-panel-top .x { background: color-mix(in srgb, var(--surface) 85%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: var(--shadow-sm); color: var(--ink); }
+.hd-panel-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(18px + var(--safe-bottom)); }
+.hd-gallery { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; background: var(--tint); aspect-ratio: 16 / 10; }
+.hd-gallery::-webkit-scrollbar { display: none; }
+.hd-gallery img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: start; }
+.hd-gnote { padding: 6px 18px 0; font-size: 12px; color: var(--ink-soft); }
+.hd-sec { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.hd-sec:first-of-type { padding-top: calc(18px + var(--safe-top)); }
+.hd-gallery + .hd-sec, .hd-gnote + .hd-sec { padding-top: 14px; }
+.hd-sec h3 { margin: 0 0 10px; font-size: 16px; font-weight: 750; }
+.hd-sec h3 small { margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.hd-addr { font-size: 22px; padding-right: 40px; }
+.hd-sub { color: var(--ink-soft); font-size: 14px; }
+.hd-sec .hd-place { margin-top: 2px; font-size: 14px; }
+.hd-pricerow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.hd-big { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; }
+.hd-stars { display: inline-flex; gap: 2px; }
+.hd-star { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: none; cursor: pointer; }
+.hd-star svg { width: 26px; height: 26px; fill: #DCDCD8; }
+.hd-star.on svg { fill: #F7B230; }
+.hd-star.half svg { fill: #F7B230; opacity: 0.55; }
+@media (prefers-color-scheme: dark) { .hd-star svg { fill: #3C443F; } }
+.hd-toggles { display: flex; gap: 8px; margin-top: 12px; }
+.hd-tog { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink); font-size: 13.5px; font-weight: 650; cursor: pointer; }
+.hd-tog .ic { width: 16px; height: 16px; }
+.hd-tog.on.v { background: var(--teal); border-color: var(--teal); color: #FFFFFF; }
+.hd-tog.on.p { background: #F59E0B; border-color: #F59E0B; color: #FFFFFF; }
+.hd-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.hd-tiles.two { grid-template-columns: auto 1fr; }
+.hd-sec .hd-tiles:first-child { margin-top: 0; }
+.hd-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 9px 12px 10px; border-radius: 12px; background: var(--tint); }
+.hd-tile span { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
+.hd-tile b { font-size: 17px; font-weight: 750; min-height: 22px; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hd-note { margin-top: 12px; padding: 11px 13px; border-radius: 12px; background: var(--tint); font-size: 14px; white-space: pre-wrap; }
+.hd-status { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; font-size: 14px; font-weight: 700; }
+.hd-status .ic { width: 18px; height: 18px; stroke-width: 2.3; }
+.hd-status.ok { color: var(--teal); } .hd-status.fail { color: var(--red); } .hd-status.missing { color: #B07D0E; }
+.hd-kv { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 14px; }
+.hd-kv th, .hd-kv td { padding: 8px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.hd-kv tr:last-child th, .hd-kv tr:last-child td { border-bottom: 0; }
+.hd-kv th { width: 46%; font-weight: 500; color: var(--ink-soft); }
+.hd-kv td { font-weight: 650; text-align: right; }
+.hd-kv td .grade { margin-left: 8px; }
+.hd-sname { vertical-align: middle; }
+.hd-line { margin: 10px 0 0; font-size: 14px; color: var(--ink-soft); }
+.good { color: var(--teal); } .bad { color: var(--red); }
+.hd-meta { font-size: 13px; color: var(--ink-soft); }
+.hd-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 18px 4px; }
+.hd-actions .btn { flex: 1 1 140px; min-height: 44px; font-size: 14.5px; }
+.hd-actions .btn .ic { width: 18px; height: 18px; }
+.block-head .more { display: inline-flex; align-items: center; gap: 2px; color: var(--blue); font-size: 14px; font-weight: 700; text-decoration: none; }
+.block-head .more .ic { width: 16px; height: 16px; }
+/* dashboard panel now holds the map's own home card (iframe) */
+.hd-frame { flex: 1; width: 100%; height: 100%; border: 0; background: var(--surface); }
+@media (min-width: 800px) { .hd-panel { width: 440px; } }
+.hd-panel { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+
+/* Homes page: sticky header with page links; filters stick right below it */
+.hd-page .hd-top { position: sticky; top: 0; z-index: 8; max-width: none; padding-left: 16px; padding-right: 16px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+@media (min-width: 800px) { .hd-page .hd-top { padding-left: max(32px, calc((100vw - 1120px) / 2 + 32px)); padding-right: max(32px, calc((100vw - 1120px) / 2 + 32px)); } }
+.hd-nav { display: flex; gap: 4px; margin-left: auto; margin-right: 6px; }
+.hd-nav a { padding: 6px 10px; border-radius: 9px; color: var(--ink-soft); font-size: 14px; font-weight: 650; text-decoration: none; }
+.hd-nav a:hover { color: var(--ink); background: var(--tint); }
+.hd-nav a.on { color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+@media (max-width: 420px) { .hd-page .brand > span:last-child { display: none; } .hd-nav a { padding: 6px 8px; } }
+.hd-page .hd-filters { top: var(--hdr, 60px); border-top: 0; }
+.hd-page .hd-head { margin-top: 8px; }
+
+/* price range slider (two thumbs on one track) */
+.hd-price { display: grid; gap: 6px; }
+.hd-price-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.hd-price-top span { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); }
+.hd-price-top b { font-size: 14px; font-weight: 700; }
+.hd-range { position: relative; height: 28px; }
+.hd-track { position: absolute; left: 11px; right: 11px; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: color-mix(in srgb, var(--ink-soft) 22%, transparent); }
+.hd-track i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--blue); }
+.hd-range input[type=range] { position: absolute; inset: 0; width: 100%; height: 28px; min-height: 0; margin: 0; padding: 0; border: 0; background: none;
+  box-shadow: none; -webkit-appearance: none; appearance: none; pointer-events: none; outline: none; }
+.hd-range input[type=range]::-webkit-slider-runnable-track { background: none; border: 0; height: 28px; }
+.hd-range input[type=range]::-moz-range-track { background: none; border: 0; }
+.hd-range input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 22px; height: 22px; margin-top: 3px; border-radius: 50%;
+  background: #FFFFFF; border: 2px solid var(--blue); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); cursor: grab; }
+.hd-range input[type=range]::-moz-range-thumb { pointer-events: auto; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; border: 2px solid var(--blue); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); cursor: grab; }
+.hd-range input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 25%, transparent); }
+@media (max-width: 799px) { .hd-selects label { flex: 1 1 calc(33% - 10px); } }
+
+/* Homes page header v2: brand | page links (desktop) + one menu button (avatar ▾) */
+.hd-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.hd-nav { margin: 0; }
+@media (max-width: 640px) { .hd-nav { display: none; } }
+.hd-menu-wrap { position: relative; }
+.hd-menu-btn { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 2px; border: 0; border-radius: 999px; background: none; color: var(--ink-soft); cursor: pointer; }
+.hd-menu-btn .ic { width: 16px; height: 16px; }
+.hd-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; min-width: 170px; padding: 6px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); animation: fade 0.12s ease-out; }
+.hd-menu a, .hd-menu button { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: 9px; background: none; color: var(--ink);
+  font: inherit; font-size: 15px; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; }
+.hd-menu a:hover, .hd-menu button:hover { background: var(--tint); }
+.hd-menu a.on { color: var(--blue); }
+.hd-menu button { color: var(--ink-soft); border-top: 1px solid var(--line); border-radius: 0 0 9px 9px; margin-top: 4px; }
+@media (min-width: 641px) { .hd-menu .m-page { display: none; } .hd-menu button { border-top: 0; margin-top: 0; border-radius: 9px; } }
+.hd-page .brand > span:last-child { display: inline; }
+
+/* Filters v2: compact bar (search + Filters button); the rest drops down */
+.hd-page .hd-filters { display: block; padding-top: 10px; padding-bottom: 10px; }
+.hd-bar { display: flex; gap: 8px; }
+.hd-bar .hd-search { flex: 1; min-width: 0; }
+.hd-fbtn { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 14.5px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.hd-fbtn .ic { width: 18px; height: 18px; }
+.hd-fbtn.open, .hd-fbtn.active { border-color: var(--blue); color: var(--blue); }
+.hd-fcount { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--blue); color: #FFFFFF; font-size: 12px; font-weight: 750; }
+.hd-drop { display: grid; gap: 12px; margin-top: 10px; padding: 12px 14px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow); animation: fade 0.15s ease-out; }
+.hd-drop-head { display: flex; align-items: center; gap: 10px; }
+.hd-drop-head b { font-size: 16px; font-weight: 750; margin-right: auto; }
+.hd-drop-head .hd-reset { margin: 0; }
+.hd-drop-head .x { width: 34px; height: 34px; }
+.hd-drop .hd-chips { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
+@media (max-width: 799px) { .hd-drop .hd-selects label { flex: 1 1 calc(33% - 10px); min-width: 0; } }
+/* header and filter bar meet with no gap (1px overlap hides sub-pixel seams) */
+.hd-page .hd-filters { top: calc(var(--hdr, 60px) - 1px); }
+.hd-page .hd-top { margin-bottom: 0; }
+
+/* Homes page: header holds the search/filter bar too — one sticky, one frosted surface, no seam */
+.hd-page .hd-top { flex-wrap: wrap; row-gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.hd-page .hd-top .hd-filters { position: static; flex: 1 0 100%; margin: 0; padding: 0; background: none; border: 0;
+  -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Desktop: Filters opens as a compact panel under the Filters button (not the full page width);
+   inside it everything shares one width: chips, a 3-column row of selects, then the price slider */
+@media (min-width: 800px) {
+  .hd-page .hd-top .hd-filters { position: relative; }
+  .hd-drop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 12; width: 440px; margin-top: 0; }
+}
+.hd-drop .hd-selects { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.hd-drop .hd-selects label { min-width: 0; }
+.hd-drop .hd-selects select { width: 100%; }
+/* fix: the old "stick below the header" offset was shifting the in-header bar down */
+.hd-page .hd-top .hd-filters { top: auto; }
+.hd-pcount { display: inline-flex; align-items: center; gap: 4px; }
+.hd-pcount svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+/* Homes page card: small note when a home doesn't meet the school rule */
+.hd-rule { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 6px 9px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: #FFFFFF; }
+.hd-rule::before { content: "!"; flex: none; display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: #FFFFFF; font-size: 10.5px; font-weight: 900; }
+.hd-rule.fail { background: var(--red); } .hd-rule.fail::before { color: var(--red); }
+.hd-rule.missing { background: #C99117; } .hd-rule.missing::before { color: #B07D0E; }
+/* Homes page: badges stacked in the photo's top-right corner (Priority, then the school warning) */
+.hd-badges { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.hd-badges .prio { position: static; }
+.hd-warn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px 4px 7px; border-radius: 999px; color: #FFFFFF;
+  font-size: 12px; font-weight: 750; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); white-space: nowrap; }
+.hd-warn .ic { width: 13px; height: 13px; stroke-width: 2.3; }
+.hd-warn.fail { background: var(--red); }
+.hd-warn.missing { background: #C99117; }
+@media (max-width: 799px) { .hd-badges { right: 8px; top: 8px; } .hd-warn { padding: 3px 8px 3px 6px; font-size: 11px; } }
+/* Filters panel: soft open (fade + slide down) and soft close (fold up + fade) */
+.hd-drop { overflow: hidden; animation: hd-drop-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: top center; }
+@keyframes hd-drop-in { from { opacity: 0; transform: translateY(-6px) scale(0.99); } }
+.hd-drop.closing { pointer-events: none; opacity: 0; transform: translateY(-6px) scale(0.99);
+  padding-top: 0; padding-bottom: 0; margin-top: 0; border-width: 0;
+  transition: height 0.2s ease, opacity 0.16s ease, transform 0.2s ease, padding 0.2s ease, margin 0.2s ease; }
+@media (prefers-reduced-motion: reduce) { .hd-drop, .hd-drop.closing { animation: none; transition: none; } }
+/* photo badges side by side (wrap only if the card is too narrow) */
+.hd-badges { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: calc(100% - 20px); }
+.hd-img:has(.visited) .hd-badges { max-width: calc(100% - 110px); }
+
+/* Outline button (home page "All homes"): white with a clear edge, same size as the other hero buttons */
+.btn.outline { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 22%, transparent); }
+.btn.outline:hover { background: var(--tint); }
+/* Homes page: title with the Add a home button beside it */
+.hd-head { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.hd-add { flex: none; min-height: 40px; padding: 0 14px; font-size: 14.5px; }
+.hd-add .ic { width: 18px; height: 18px; }
+/* Hero buttons: Open the map + Add a home side by side, Homes dashboard underneath spanning both (phone and desktop) */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.actions .btn { width: 100%; min-width: 0; }
+.actions .btn.dash { grid-column: 1 / -1; }
+@media (min-width: 800px) { .actions { display: inline-grid; grid-template-columns: auto auto; } }
+/* Homes dashboard button: the purple from the PDX Livability logo */
+.btn.outline.dash { background: var(--hood); color: #FFFFFF; box-shadow: none; }
+.btn.outline.dash:hover { background: color-mix(in srgb, var(--hood) 86%, #000); }
+/* Homes dashboard button: near-black (same as the dark "View on map" button); flips to light in dark mode */
+.btn.outline.dash { background: var(--ink); color: var(--surface); }
+.btn.outline.dash:hover { background: color-mix(in srgb, var(--ink) 85%, var(--surface)); }

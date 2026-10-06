@@ -51,12 +51,26 @@ function homeCard(r) {
 }
 function render(rows) {
   const h = rows.filter((r) => r.kind === 'home');
-  $('#homesCount').textContent = h.length ? h.length : '';
-  $('#homesGrid').innerHTML = h.length ? h.slice(0, 24).map(homeCard).join('') : '<p class="empty">No homes added yet. Tap “Add a home” to save the first one.</p>';
   $('#updatesGrid').innerHTML = rows.length ? rows.slice(0, 12).map(updateCard).join('') : '<p class="empty">Nothing logged yet.</p>';
   requestAnimationFrame(() => navUpdaters.forEach((u) => u()));
   renderStats(h);
 }
+
+/* ---------- Home card panel: the map's own home card, embedded (same as on the Homes page) ---------- */
+let cardY = 0;
+function openCard(id) {
+  const panel = $('#cardPanel'), scrim = $('#cardScrim');
+  $('#cardFrame').src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1`;
+  if (panel.hidden) { panel.hidden = false; scrim.hidden = false; cardY = scrollY; Object.assign(document.body.style, { position: 'fixed', top: -cardY + 'px', left: '0', right: '0' }); }
+}
+function closeCard() {
+  const panel = $('#cardPanel'); if (!panel || panel.hidden) return;
+  panel.hidden = true; $('#cardScrim').hidden = true; $('#cardFrame').src = 'about:blank';
+  Object.assign(document.body.style, { position: '', top: '', left: '', right: '' }); scrollTo(0, cardY);
+}
+document.addEventListener('click', (e) => { if (e.target.id === 'cardScrim') closeCard(); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
+addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.type === 'pdx-close-card') closeCard(); });
 
 /* ---------- Home stats: quick numbers about the saved homes ---------- */
 /* Price bands: homes grouped into even price ranges, one bar per range. Tap (or click) a band to list its homes;
@@ -85,21 +99,7 @@ function bandChart(el, id, title, headRight, groups) {
     openBand[id] = willOpen ? g.key : null;
     el.querySelectorAll('.band').forEach((x) => { const on = willOpen && x === btn; x.classList.toggle('open', on); x.setAttribute('aria-expanded', on); x.nextElementSibling.hidden = !on; });
   }));
-  el.querySelectorAll('.band-home').forEach((btn) => btn.addEventListener('click', () => {
-    const peek = btn.nextElementSibling, willOpen = peek.hidden;
-    el.querySelectorAll('.band-home').forEach((x) => { x.classList.remove('on'); x.setAttribute('aria-expanded', 'false'); x.nextElementSibling.hidden = true; });
-    if (!willOpen) return;
-    const r = allRows.find((x) => String(x.id) === btn.dataset.id); if (!r) return;
-    btn.classList.add('on'); btn.setAttribute('aria-expanded', 'true');
-    peek.innerHTML = peekHTML(r); peek.hidden = false;
-    const box = btn.parentElement;   // keep the tapped home and its peek in view inside the scrolling list
-    requestAnimationFrame(() => box.scrollTo({ top: btn.offsetTop - 4, behavior: 'smooth' }));
-    if (r.lat != null) schoolCheck(r.lng, r.lat).then((c) => {
-      const g = peek.querySelector('.peek-schools'); if (!g) return;
-      g.innerHTML = c.none ? '<span class="muted">No attendance area</span>'
-        : `<span>Area ${badge(c.area)}</span><span><em>${esc(shortHS(c.hsName))}</em>${badge(c.hs)}</span>`;
-    }).catch(() => {});
-  }));
+  el.querySelectorAll('.band-home').forEach((btn) => btn.addEventListener('click', () => openCard(btn.dataset.id)));
 }
 // Price bands: even price ranges ("nice" size giving about 4–7 bands); empty ranges are left out
 function renderSpread(homes, avg) {
@@ -209,6 +209,7 @@ sb.auth.getSession().then(async ({ data: { session } }) => {
   authChecked = true;
   if (!session) { gate.hidden = false; return; }
   user = session.user; await ensureName(); loadData();
+  if (QS.has('add')) openSheet();   // opened from the Homes page "Add a home" button
 });
 $('#signin').addEventListener('submit', async (ev) => {
   ev.preventDefault();
@@ -378,7 +379,9 @@ function openSheet() {
   resetForm(); sheet.hidden = false; scrim.hidden = false; lockPage(true); fitSheet();
   setTimeout(() => linkIn.focus(), 50);
 }
-function closeSheet() { sheet.hidden = true; scrim.hidden = true; lockPage(false); resetForm(); }
+// ?add=1&back=homes: the add-home form was opened from the Homes page; when it closes (saved or cancelled) go back there
+const QS = new URLSearchParams(location.search), BACK = QS.get('back') === 'homes' ? 'homes.html' : null;
+function closeSheet() { sheet.hidden = true; scrim.hidden = true; lockPage(false); resetForm(); if (BACK && QS.has('add')) location.href = BACK; }
 /* Phones: while the sheet is open the page underneath is pinned (iOS ignores overflow:hidden on the body and scrolls
    the page when the keyboard opens). The sheet follows the *visible* area: when the keyboard is up, its bottom sits on
    top of the keyboard and it never grows taller than what's visible, so no page shows between the sheet and the keyboard. */

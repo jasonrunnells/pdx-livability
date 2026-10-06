@@ -1,7 +1,7 @@
 # Builds the address search index from lots_outline.geojson.
 #   python3 addrindex.py <part> <parts>   -> _build/addr_NN.jsonl.gz   (byte-range chunks, short runs)
 #   python3 addrindex.py merge            -> maps/explorer/data/addr/<first 2 chars of house number>.json
-# Each row: [address, city, zip, lon, lat]  (lon/lat = middle of the lot's largest piece; the map then
+# Each row: [address, city, zip, lon, lat, county market value (latest, when known)]  (lon/lat = middle of the lot's largest piece; the map then
 # finds the lot itself by matching the address in the lot tiles).
 import json, gzip, os, sys, glob
 exec(open(os.path.join(os.path.dirname(__file__),'prep.py')).read().split('def cls')[0])
@@ -39,5 +39,10 @@ while i!=-1 and i<(B0-A0):
         r=poly[0]; xs=[c[0] for c in r]; ys=[c[1] for c in r]; ar=(max(xs)-min(xs))*(max(ys)-min(ys))
         if not best or ar>best[0]: best=(ar,(min(xs)+max(xs))/2,(min(ys)+max(ys))/2)
     city=(p.get('SITECITY') or '').strip().title(); z=str(p.get('SITEZIP') or '').strip()
-    out.write(json.dumps([nice(a),city,z,round(best[1],5),round(best[2],5)],separators=(',',':'))+'\n'); cnt+=1
+    def nv(k):
+        try: v=float(p.get(k) or 0)
+        except Exception: v=0
+        return v if v>0 else 0
+    val=int(nv('TOTALVAL3') or nv('TOTALVAL2') or nv('TOTALVAL1'))   # latest county market value on record
+    out.write(json.dumps([nice(a),city,z,round(best[1],5),round(best[2],5)]+([val] if val else []),separators=(',',':'))+'\n'); cnt+=1
 out.close(); print(part,'done',cnt,flush=True)

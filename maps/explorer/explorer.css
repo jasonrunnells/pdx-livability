@@ -974,3 +974,49 @@ html, body {
 .sheet .pf > .pl:first-of-type { margin-top: 4px; }
 .sheet .pf .pf-prio { margin-top: 14px; }
 .sheet .pf .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+
+/* ---------- Embed mode (Homes dashboard panel): only the home card, full page ---------- */
+html.embed .fab, html.embed .search, html.embed .maplibregl-ctrl-top-right, html.embed .maplibregl-ctrl-bottom-left,
+html.embed .maplibregl-ctrl-bottom-right, html.embed .layers-panel, html.embed .map-toast { display: none !important; }
+html.embed .sheet, html.embed .sheet.open, html.embed .sheet.full {
+  position: fixed; inset: 0 !important; width: auto !important; height: auto !important; max-height: none !important;
+  border-radius: 0 !important; box-shadow: none !important; transform: none !important; transition: none !important;
+}
+html.embed .sheet:not(.open) { visibility: visible; }
+html.embed .sheet:not(.open) .body::before { content: "Loading home…"; display: block; padding: 24px 2px; color: var(--ink-soft); font-family: var(--font); }
+html.embed .sheet .body { overflow-y: auto !important; }
+html.embed .sheet-top .grab { display: none; }
+/* button bar always pinned with the frosted glass, plus a full-width View on map button */
+html.embed .sheet .body { padding-bottom: 0 !important; }
+html.embed .sheet .foot {
+  position: sticky; bottom: 0; z-index: 3; margin: 14px -18px 0; padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: color-mix(in srgb, var(--surface-solid) 55%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8);
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); box-shadow: 0 -6px 18px -12px rgba(0, 0, 0, 0.28); animation: none !important;
+}
+html.embed .sheet .btn.view-map { margin: 0 0 8px; background: var(--ink); color: var(--surface-solid); white-space: nowrap; }
+html.embed .sheet .foot .btn { white-space: nowrap; }
+
+/* home card: school-rule note under the high school / area grade tiles */
+.sheet .rule-note { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 13px; font-weight: 700; }
+.sheet .rule-note::before { content: "!"; display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; color: #FFFFFF; font-size: 11px; font-weight: 800; }
+.sheet .rule-note.fail { color: var(--down); } .sheet .rule-note.fail::before { background: var(--down); }
+.sheet .rule-note.missing { color: #B07D0E; } .sheet .rule-note.missing::before { background: #C99117; }
+@media (prefers-color-scheme: dark) { .sheet .rule-note.missing { color: #E5B44A; } }
+/* school-rule note as a full-width tile under the high school / area grade tiles (same shape and spacing, solid color) */
+.sheet .rule-note { margin-top: 8px; padding: 10px 12px; border-radius: 12px; justify-content: flex-start; gap: 8px; font-size: 14px; font-weight: 700; color: #FFFFFF; }
+.sheet .rule-note::before { width: 18px; height: 18px; background: rgba(255, 255, 255, 0.25) !important; color: #FFFFFF; }
+.sheet .rule-note.fail { background: var(--down); color: #FFFFFF; }
+.sheet .rule-note.missing { background: #C99117; color: #FFFFFF; }
+@media (prefers-color-scheme: dark) { .sheet .rule-note.fail { background: #D64545; } .sheet .rule-note.missing { background: #B98714; color: #FFFFFF; } }
+/* "!" badge: solid white circle with the tile's color inside, so it reads clearly */
+.sheet .rule-note::before { flex: none; width: 18px; height: 18px; background: #FFFFFF !important; font-size: 12px; font-weight: 900; line-height: 1; }
+.sheet .rule-note.fail::before { color: var(--down); }
+.sheet .rule-note.missing::before { color: #B07D0E; }
+/* home card photos: taller now that the card can go full screen */
+.sheet .photos img { height: 260px; }
+@media (min-width: 800px) { .sheet .photos img { height: 240px; } }
+
+/* photo arrows: drawn chevrons, exactly centered in the circle */
+.sheet .parrow { display: grid; place-items: center; padding: 0; font-size: 0; line-height: 0; }
+.sheet .parrow svg { display: block; width: 18px; height: 18px; fill: none; stroke: #FFFFFF; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }

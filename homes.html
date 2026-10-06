@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Homes · PDX Livability</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F5F2E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16191C" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="styles.css?v=20261006f">
+</head>
+<body class="hd-page">
+
+<header class="top hd-top" id="hdTop">
+  <a class="brand" href="index.html">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>PDX Livability</span>
+  </a>
+  <div class="hd-right">
+    <nav class="hd-nav" aria-label="Pages">
+      <a href="index.html">Home</a>
+      <a href="homes.html" class="on" aria-current="page">Homes</a>
+      <a href="maps/explorer/index.html">Map</a>
+    </nav>
+    <!-- one menu button holds the links on phones, plus sign out everywhere -->
+    <div class="hd-menu-wrap">
+      <button type="button" class="hd-menu-btn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menu">
+        <span class="avatar" id="avatar"></span>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+      </button>
+      <div class="hd-menu" id="menu" hidden>
+        <a href="index.html" class="m-page">Home</a>
+        <a href="homes.html" class="m-page on">Homes</a>
+        <a href="maps/explorer/index.html" class="m-page">Map</a>
+        <button type="button" id="signOut">Sign out</button>
+      </div>
+    </div>
+  </div>
+  <!-- search + filters live inside the header so the whole top is one frosted surface -->
+    <div class="hd-filters" id="hdFilters" hidden>
+      <div class="hd-bar">
+        <div class="hd-search">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.75" cy="10.75" r="6"/><path d="m15.25 15.25 4.25 4.25"/></svg>
+          <input id="fText" type="search" placeholder="Search homes" autocomplete="off" spellcheck="false" aria-label="Search address, neighborhood or city">
+        </div>
+        <button type="button" class="hd-fbtn" id="fBtn" aria-expanded="false" aria-controls="fDrop">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg>Filters<span class="hd-fcount" id="fCount" hidden></span>
+        </button>
+      </div>
+      <div class="hd-drop" id="fDrop" hidden>
+        <div class="hd-drop-head"><b>Filters</b><button type="button" class="link hd-reset" id="fReset">Reset</button><button type="button" class="x" id="fClose" aria-label="Close filters"><svg class="ic" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>
+        <div class="hd-chips" role="group" aria-label="Quick filters">
+          <button type="button" class="hd-chip" data-f="priority">Priority</button>
+          <button type="button" class="hd-chip" data-f="notvisited">Not visited</button>
+          <button type="button" class="hd-chip" data-f="visited">Visited</button>
+        </div>
+        <div class="hd-selects">
+          <label><span>Sort</span><select id="fSort">
+            <option value="new">Newest first</option><option value="old">Oldest first</option>
+            <option value="priceAsc">Price: low to high</option><option value="priceDesc">Price: high to low</option>
+            <option value="value">Best value</option>
+            <option value="rating">Rating</option><option value="sqft">Sq ft</option></select></label>
+          <label><span>Beds</span><select id="fBeds"><option value="">Any</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option><option value="5">5+</option></select></label>
+          <label><span>City</span><select id="fCity"><option value="">All</option></select></label>
+        </div>
+        <div class="hd-price" id="fPrice" hidden>
+          <div class="hd-price-top"><span>Price</span><b id="fPriceLbl">Any</b></div>
+          <div class="hd-range">
+            <div class="hd-track"><i id="fFill"></i></div>
+            <input type="range" id="fLo" aria-label="Minimum price">
+            <input type="range" id="fHi" aria-label="Maximum price">
+          </div>
+        </div>
+      </div>
+    </div>
+</header>
+
+<main>
+  <div class="hd-head">
+    <h1 class="hd-title">Homes <span class="count" id="hdCount"></span></h1>
+    <a class="btn secondary hd-add" href="index.html?add=1&amp;back=homes">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>Add a home
+    </a>
+  </div>
+
+  <section class="gate panel" id="gate" hidden>
+    <h2>Sign in</h2>
+    <p class="muted">Sign in on the home page to see your saved homes.</p>
+    <a class="btn primary wide" href="index.html">Go to sign in</a>
+  </section>
+
+  <div id="hdApp" hidden>
+    <!-- Filters -->
+    <div class="hd-grid" id="hdGrid"></div>
+  </div>
+</main>
+
+<!-- Detail panel -->
+<div class="scrim" id="hdScrim" hidden></div>
+<aside class="hd-panel" id="hdPanel" hidden role="dialog" aria-modal="true" aria-label="Home details">
+  <iframe class="hd-frame" id="hdFrame" title="Home card" src="about:blank"></iframe>
+</aside>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="homes.js?v=20261006f"></script>
+</body>
+</html>

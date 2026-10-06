@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Portland">
-<link rel="stylesheet" href="styles.css?v=20261004b">
+<link rel="stylesheet" href="styles.css?v=20261006i">
 </head>
 <body>
 
@@ -45,6 +45,10 @@
           <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 10.4 12 4.5l7.25 5.9V18.5a1 1 0 0 1-1 1H5.75a1 1 0 0 1-1-1z"/><path d="M12 10.5v6M9 13.5h6"/></svg>
           Add a home
         </button>
+        <a class="btn outline dash" href="homes.html">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="7.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="4.5" rx="1.5"/><rect x="4" y="14.5" width="6.5" height="5.5" rx="1.5"/><rect x="13.5" y="11.5" width="6.5" height="8.5" rx="1.5"/></svg>
+          Homes dashboard
+        </a>
       </div>
     </div>
   </section>
@@ -64,17 +68,6 @@
   <div id="authed" hidden>
     <section class="block">
       <div class="block-head">
-        <h2>Homes <span class="count" id="homesCount"></span></h2>
-        <div class="nav" data-for="homesGrid">
-          <button type="button" class="navbtn prev" aria-label="Scroll left"><svg class="ic" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></svg></button>
-          <button type="button" class="navbtn next" aria-label="Scroll right"><svg class="ic" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></svg></button>
-        </div>
-      </div>
-      <div class="row homes" id="homesGrid"></div>
-    </section>
-
-    <section class="block">
-      <div class="block-head">
         <h2>Recent updates</h2>
         <div class="nav" data-for="updatesGrid">
           <button type="button" class="navbtn prev" aria-label="Scroll left"><svg class="ic" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></svg></button>
@@ -85,7 +78,7 @@
     </section>
 
     <section class="block">
-      <div class="block-head"><h2>Home stats</h2></div>
+      <div class="block-head"><h2>Home stats</h2><a class="more" href="homes.html">All homes<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></a></div>
       <div class="stats" id="stats"></div>
       <div class="spread" id="spread" hidden></div>
       <div class="spread" id="ratings" hidden></div>
@@ -158,7 +151,13 @@
   </div>
 </section>
 
+<!-- Home card panel (the map's own card, embedded) -->
+<div class="scrim" id="cardScrim" hidden></div>
+<aside class="hd-panel" id="cardPanel" hidden role="dialog" aria-modal="true" aria-label="Home details">
+  <iframe class="hd-frame" id="cardFrame" title="Home card" src="about:blank"></iframe>
+</aside>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js?v=20261004c"></script>
+<script src="script.js?v=20261006b"></script>
 </body>
 </html>

@@ -5,6 +5,10 @@
    ========================================================================== */
 (() => {
   'use strict';
+  // Embed mode (?embed=1): the Homes dashboard shows this map's home card inside a panel. The map runs hidden
+  // behind the card (so lot data still loads), the card fills the page, and closing it tells the dashboard.
+  const EMBED = new URLSearchParams(location.search).has('embed');
+  if (EMBED) document.documentElement.classList.add('embed');
 
   /* ---------- Settings ---------- */
   const TILES = {
@@ -179,11 +183,13 @@
   const overlayOn = {}, overlayLoaded = {};
   // Every layer starts off; nothing loads until you switch it on.
 
+  let sasData = null;   // attendance areas tagged pass / fail (see sasQualify); declared early because the map style reads it at startup
   function overlaySources() {
     const out = {};
     for (const o of OVERLAYS) {
-      if (overlayOn[o.key] && o.file) overlayLoaded[o.key] = true;
-      const data = o.load ? (homesData || EMPTY) : (overlayLoaded[o.key] ? o.file : EMPTY);
+      if (overlayOn[o.key] && o.file && o.key !== 'sas') overlayLoaded[o.key] = true;
+      if (o.key === 'hoods' && overlayOn.sas) overlayLoaded.hoods = true;   // attendance areas label with neighborhood names
+      const data = o.load ? (homesData || EMPTY) : o.key === 'sas' && sasData ? sasData : (overlayLoaded[o.key] && o.key !== 'sas' ? o.file : EMPTY);
       out['ov-' + o.key] = o.group === 'places'
         ? { type: 'geojson', data, cluster: true, clusterRadius: 42, clusterMaxZoom: 15,
             // homes: each cluster remembers whether it holds a priority home (prio = 1), so it can be styled like one
@@ -231,16 +237,24 @@
       paint: { 'text-color': c.city, ...halo(1.6) } });
 
     // School attendance areas: teal line + tint, elementary school name inside
+    // fill colored by the area's overall grade, see-through so the map shows
+    // Colored by the add-a-home school rule (area grade C or better AND its high school B or better):
+    // green = homes here qualify, red = they don't, gray = not enough grade data to tell. Worked out in sasQualify().
+    const QUAL = { yes: '#1A9641', no: '#D7191C', unknown: '#9AA0A6' };
     L.fills.push({ id: 'sas-fill', type: 'fill', source: 'ov-sas', layout: vis('sas'),
-      paint: { 'fill-color': c.sas, 'fill-opacity': ['case', ['boolean', ['feature-state', 'sel'], false], 0.3, BFILL] } });
+      paint: { 'fill-color': ['match', ['get', '_qual'], 'yes', QUAL.yes, 'no', QUAL.no, 'unknown', QUAL.unknown, 'rgba(0,0,0,0)'],
+               'fill-opacity': ['case', ['boolean', ['feature-state', 'sel'], false], 0.55, 0.32] } });
     L.lines.push({ id: 'sas-line', type: 'line', source: 'ov-sas', layout: { ...vis('sas'), 'line-join': 'round' },
-      paint: { 'line-color': c.sas, 'line-opacity': 0.9,
+      // neutral outline so the fill colors read cleanly (the picked area still gets a dark, thick outline)
+      // dark gray outline (white blended with the streets); the picked area gets a near-black, thicker one
+      paint: { 'line-color': ['case', ['boolean', ['feature-state', 'sel'], false], c === PALETTE.dark ? '#FFFFFF' : '#1F2326', c === PALETTE.dark ? 'rgba(220,224,228,0.55)' : 'rgba(55,60,66,0.55)'], 'line-opacity': 0.9,
                'line-width': ['interpolate', ['linear'], ['zoom'], 10, ['case', ['boolean', ['feature-state', 'sel'], false], 2.6, 1], 14, ['case', ['boolean', ['feature-state', 'sel'], false], 3.4, 1.8], 18, ['case', ['boolean', ['feature-state', 'sel'], false], 4.2, 2.6]] } });
-    L.labels.push({ id: 'sas-label', type: 'symbol', source: 'ov-sas', minzoom: 12.5,
-      layout: { ...vis('sas'), 'text-field': ['get', SAS_ES], 'text-font': FONT.semibold,
-                'text-size': ['interpolate', ['linear'], ['zoom'], 12.5, 10.5, 16, 12.5],
-                'text-max-width': 8, 'text-padding': 8 },
-      paint: { 'text-color': c.sas, ...halo(1.6) } });
+    // Over the attendance areas, show neighborhood names (from the neighborhoods file) instead of school names
+    L.labels.push({ id: 'sas-label', type: 'symbol', source: 'ov-hoods', minzoom: 11.5,
+      layout: { ...vis('sas'), 'text-field': ['get', 'Name'], 'text-font': FONT.italic,
+                'text-size': ['interpolate', ['linear'], ['zoom'], 11.5, 11, 15, 13.5],
+                'text-max-width': 7, 'text-padding': 8, 'text-letter-spacing': 0.03 },
+      paint: { 'text-color': c.hood, ...halo(1.8) } });
     // Places: colored dots with a white ring; names appear when zoomed in
     L.points = [];
     for (const o of OVERLAYS.filter((x) => x.group === 'places')) {
@@ -584,6 +598,23 @@
   }
 
   /* ---------- Layers button + panel ---------- */
+  // Attendance areas with a '_qual' tag: 'yes' if a home there passes the add-a-home rule (area grade C or better and
+  // its high school B or better), 'no' if a known grade fails it, 'unknown' if a grade is missing
+  async function sasQualify() {
+    if (sasData) return sasData;
+    const [fc, schools] = await Promise.all([getJSON('data/schoolAttendanceAreas.geojson'), getJSON('data/schools.geojson')]);
+    const all = schools.features.map((f) => f.properties);
+    const RANK = { A: 0, B: 1, C: 2, D: 3, F: 4 }, L = (g) => String(g || '').trim().toUpperCase()[0];
+    const ok = (g, min) => L(g) in RANK && RANK[L(g)] <= RANK[min], has = (g) => L(g) in RANK;
+    sasData = { type: 'FeatureCollection', features: fc.features.map((f) => {
+      const p = f.properties, g = (k) => p['SchoolAttendanceAreas_Clipped.' + k];
+      const area = p['SAA_with_percentiles.csv.SAA_Grade'];
+      const hs = findSchool(all, g('Grade_10_Choice1_Name'), 'HS', distKey(g('Unified_SD_Name')))?.GRADE_1;
+      const pass = ok(area, 'C') && ok(hs, 'B'), fail = (has(area) && !ok(area, 'C')) || (has(hs) && !ok(hs, 'B'));
+      return { ...f, properties: { ...p, _qual: pass ? 'yes' : fail ? 'no' : 'unknown' } };
+    }) };
+    return sasData;
+  }
   function setOverlay(key, on) {
     if (on) {   // only one boundary layer at a time: switch the others off
       const grp = OVERLAYS.find((x) => x.key === key).group;
@@ -598,9 +629,13 @@
     const o = OVERLAYS.find((x) => x.key === key);
     const src = map.getSource('ov-' + key);
     if (!src) { map.once('styledata', () => setOverlay(key, overlayOn[key])); return; }  // map still starting up
+    if (on && key === 'sas' && !overlayLoaded.hoods && map.getSource('ov-hoods')) {   // its labels use the neighborhood names
+      overlayLoaded.hoods = true; map.getSource('ov-hoods').setData(OVERLAYS.find((x) => x.key === 'hoods').file);
+    }
     if (on && !overlayLoaded[key]) {
       overlayLoaded[key] = true;
       if (o.load) o.load().then((fc) => src.setData(fc)).catch((err) => { overlayLoaded[key] = false; toast(err.message || String(err)); });
+      else if (key === 'sas') sasQualify().then((fc) => src.setData(fc)).catch((err) => { overlayLoaded[key] = false; toast(err.message || String(err)); });
       else src.setData(o.file);
     }
     for (const id of overlayIds(key)) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
@@ -749,6 +784,7 @@
     wireCard();
   }
   function closeSheet() {
+    if (EMBED) { try { parent.postMessage({ type: 'pdx-close-card' }, location.origin); } catch { /* not framed */ } return; }
     sheetLock = false; sheetBody.onclick = null;
     sheet.classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); document.body.classList.remove('sheet-open');
     clearSelection();
@@ -815,6 +851,7 @@
 
   let drag = null;
   sheet.addEventListener('touchstart', (e) => {
+    if (EMBED) { drag = null; return; }   // embedded card is always full height: no peek/drag
     if (!mobile.matches || !sheet.classList.contains('open') || e.touches.length > 1) { drag = null; return; }
     if (e.target.closest('.stars, input, textarea, select')) { drag = null; return; }
     const t = e.touches[0];
@@ -1083,6 +1120,16 @@
       <div><span>Area grade</span><b>${gradeBadge(sa.grade)}</b></div>
     </div>`;
   }
+  // Small note for a saved home that doesn't meet the add-a-home school rule (area C or better, high school B or better)
+  function schoolRuleNote(sa) {
+    const RANK = { A: 0, B: 1, C: 2, D: 3, F: 4 }, L = (g) => String(g || '').trim().toUpperCase()[0];
+    const ok = (g, min) => L(g) in RANK && RANK[L(g)] <= RANK[min], has = (g) => L(g) in RANK;
+    if (!sa) return '<div class="rule-note missing">Not in a school attendance area</div>';
+    const area = sa.grade, hs = sa.schools.find((x) => x.level === 'High')?.s?.GRADE_1;
+    if (ok(area, 'C') && ok(hs, 'B')) return '';
+    const fail = (has(area) && !ok(area, 'C')) || (has(hs) && !ok(hs, 'B'));
+    return fail ? '<div class="rule-note fail">Does not meet school requirements</div>' : '<div class="rule-note missing">Not enough school data</div>';
+  }
   function schoolsHTML(sa) {
     if (!sa) return '<div class="sub pad">No attendance area found here.</div>';
     return `<div class="area-row"><span>${esc(sa.district || '')}</span></div>
@@ -1181,12 +1228,12 @@
       <button type="button" class="prio-toggle${r.priority ? ' on' : ''}" data-act="prio" aria-pressed="${!!r.priority}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 20.5v-16M5.5 4.75h11.25l-2.5 4 2.5 4H5.5"/></svg>Priority</button></div>
     <div class="sec"><div class="price-row"><div class="big">${r.price ? usd(r.price) : 'No price'}</div>${starsHTML(`data-kind="home" data-id="${esc(r.id)}"`, r.rating || 0)}</div>
       <div class="facts"><div><span>Beds</span><b>${esc(r.beds ?? '–')}</b></div><div><span>Baths</span><b>${esc(r.baths ?? '–')}</b></div><div><span>Sq ft</span><b>${r.sqft ? r.sqft.toLocaleString() : '–'}</b></div></div>
-      ${schoolStrip(sa)}</div>
-    ${(photos.length || r.note) ? `<div class="sec">${photos.length ? `<div class="photowrap"><div class="photos">${photos.map((u) => `<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${photos.length > 1 ? '<button type="button" class="parrow prev" aria-label="Previous photo">&#8249;</button><button type="button" class="parrow next" aria-label="Next photo">&#8250;</button>' : ''}</div>` : ''}${r.note ? `<button type="button" class="note clamp" aria-expanded="false">${esc(r.note)}</button>` : ''}</div>` : ''}
+      ${schoolStrip(sa)}${schoolRuleNote(sa)}</div>
+    ${(photos.length || r.note) ? `<div class="sec">${photos.length ? `<div class="photowrap"><div class="photos">${photos.map((u) => `<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${photos.length > 1 ? '<button type="button" class="parrow prev" aria-label="Previous photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg></button><button type="button" class="parrow next" aria-label="Next photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>' : ''}</div>` : ''}${r.note ? `<button type="button" class="note clamp" aria-expanded="false">${esc(r.note)}</button>` : ''}</div>` : ''}
     <details class="sec" data-sec="property" open><summary>Property</summary><div class="prop-body"><div class="sub pad">Loading…</div></div></details>
     <details class="sec" open><summary>Schools</summary>${schoolsHTML(sa)}</details>
     ${EXTRAS.replaceAll('<details class="sec">', '<details class="sec" open>')}
-    <div class="foot"><div class="pills two">${dirs([r.lng, r.lat])}${r.link ? `<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">Open listing</a>` : ''}</div>
+    <div class="foot">${EMBED ? `<a class="btn view-map" target="_top" href="index.html?pin=${esc(r.id)}">View on map</a>` : ''}<div class="pills two">${dirs([r.lng, r.lat])}${r.link ? `<a class="btn alt" target="_blank" rel="noopener" href="${esc(r.link)}">Open listing</a>` : ''}</div>
     <div class="acts"><button data-act="visit">${r.visited ? 'Undo visited' : 'Mark visited'}</button><button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>` };
   }
   // Fill the Property section once the lot under the point has loaded
@@ -1615,7 +1662,10 @@
       try {
         const fc = homesData || await loadHomes();
         const f = fc.features.find((x) => String(x.id) === pinId);
-        if (f) { map.jumpTo({ center: f.geometry.coordinates, zoom: 17 }); map.getSource('ov-pHomes').setData(fc); map.once('idle', () => openHome(f.id)); }
+        if (f) {
+          map.jumpTo({ center: f.geometry.coordinates, zoom: 17 }); map.getSource('ov-pHomes').setData(fc);
+          if (EMBED) openHome(f.id); else map.once('idle', () => openHome(f.id));   // embedded: show the card right away
+        }
       } catch (err) { toast(err.message || String(err)); }
     });
   }
