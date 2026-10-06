@@ -126,7 +126,11 @@ function setDrop(on) {
 }
 fBtn.onclick = (e) => { e.stopPropagation(); setDrop(drop.hidden || drop.classList.contains('closing')); };   // closing counts as closed
 $('#fClose').onclick = () => setDrop(false);
-addEventListener('scroll', () => { if (!drop.hidden && Math.abs(scrollY - dropY) > 24) setDrop(false); }, { passive: true });
+addEventListener('scroll', () => {
+  // a filter change can shorten the page and nudge the scroll position; that shouldn't close the panel
+  if (performance.now() - lastFilterChange < 600) { dropY = scrollY; return; }
+  if (!drop.hidden && Math.abs(scrollY - dropY) > 24) setDrop(false);
+}, { passive: true });
 document.addEventListener('pointerdown', (e) => { if (!drop.hidden && !$('#hdFilters').contains(e.target)) setDrop(false); });
 addEventListener('keydown', (e) => { if (e.key === 'Escape') { setDrop(false); setMenu(false); } });
 
@@ -182,7 +186,8 @@ function syncControls() {
   $('#fCount').hidden = !n; $('#fCount').textContent = n; $('#fBtn').classList.toggle('active', n > 0);
   $('#fReset').hidden = !(F.text || n);
 }
-function changed() { store.set({ chips: [...F.chips], sort: F.sort, lo: F.lo, hi: F.hi, beds: F.beds, city: F.city }); syncControls(); render(); }
+let lastFilterChange = 0;
+function changed() { lastFilterChange = performance.now(); store.set({ chips: [...F.chips], sort: F.sort, lo: F.lo, hi: F.hi, beds: F.beds, city: F.city }); syncControls(); render(); }
 $('#fText').addEventListener('input', (e) => { F.text = e.target.value.trim().toLowerCase(); changed(); });
 document.querySelectorAll('.hd-chip').forEach((b) => b.addEventListener('click', () => {
   const k = b.dataset.f;
@@ -301,12 +306,49 @@ function card(r) {
     </div>
   </button>`;
 }
+// Cards are kept and reused between renders (photos don't reload), then animated:
+// cards that stay slide to their new spot, cards that come back fade in, cards that drop out fade away.
+const nodes = new Map();   // home id -> { el, html }
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
+const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 function render() {
-  const all = homes(), list = filtered();
+  const all = homes(), list = filtered(), grid = $('#hdGrid');
   $('#hdCount').textContent = all.length ? (list.length === all.length ? all.length : `${list.length} of ${all.length}`) : '';
-  $('#hdGrid').innerHTML = !all.length ? '<p class="empty">No homes saved yet.</p>'
-    : list.length ? list.map(card).join('') : '<p class="empty">No homes match these filters. <button type="button" class="link" id="emptyReset">Reset filters</button></p>';
-  $('#emptyReset')?.addEventListener('click', () => $('#fReset').click());
+  if (!all.length || !list.length) {
+    grid.innerHTML = !all.length ? '<p class="empty">No homes saved yet.</p>'
+      : '<p class="empty">No homes match these filters. <button type="button" class="link" id="emptyReset">Reset filters</button></p>';
+    $('#emptyReset')?.addEventListener('click', () => $('#fReset').click());
+    return;
+  }
+  grid.querySelectorAll(':scope > .empty').forEach((e) => e.remove());
+  const before = new Map();
+  for (const [id, n] of nodes) if (n.el.isConnected) before.set(id, n.el.getBoundingClientRect());
+  const keep = new Set();
+  for (const r of list) {
+    const html = card(r).trim(); let n = nodes.get(r.id);
+    if (!n || n.html !== html) {
+      const t = document.createElement('template'); t.innerHTML = html; const el = t.content.firstElementChild;
+      if (n?.el.isConnected) n.el.replaceWith(el);
+      n = { el, html }; nodes.set(r.id, n);
+    }
+    keep.add(r.id); grid.appendChild(n.el);   // appending an existing card just moves it into the new order
+  }
+  // cards that dropped out: fade them away in place, then remove
+  for (const [id, n] of nodes) {
+    if (keep.has(id) || !n.el.isConnected) continue;
+    const el = n.el, b = before.get(id);
+    if (calm.matches || !b) { el.remove(); continue; }
+    const g = grid.getBoundingClientRect();
+    Object.assign(el.style, { position: 'absolute', left: b.left - g.left + 'px', top: b.top - g.top + 'px', width: b.width + 'px', height: b.height + 'px', pointerEvents: 'none', zIndex: 0 });
+    el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.96)' }], { duration: 180, easing: 'ease-out' }).onfinish = () => { el.remove(); el.removeAttribute('style'); };
+  }
+  if (calm.matches) return;
+  for (const id of keep) {
+    const el = nodes.get(id).el, b = before.get(id);
+    if (!b) { el.animate([{ opacity: 0, transform: 'translateY(10px) scale(0.98)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE }); continue; }
+    const a = el.getBoundingClientRect(), dx = b.left - a.left, dy = b.top - a.top;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 300, easing: EASE });
+  }
 }
 $('#hdGrid').addEventListener('click', (e) => { const b = e.target.closest('.hd-card'); if (b) openPanel(b.dataset.id); });
 

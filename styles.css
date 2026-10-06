@@ -874,3 +874,4 @@ a.brand { color: inherit; text-decoration: none; }
 /* Homes dashboard button: near-black (same as the dark "View on map" button); flips to light in dark mode */
 .btn.outline.dash { background: var(--ink); color: var(--surface); }
 .btn.outline.dash:hover { background: color-mix(in srgb, var(--ink) 85%, var(--surface)); }
+.hd-grid { position: relative; }   /* lets dropped cards fade out in place */
