@@ -887,3 +887,35 @@ a.brand { color: inherit; text-decoration: none; }
   .hd-frame { background: transparent; }
   #hdScrim, #cardScrim { background: rgba(15, 18, 20, 0.35); }
 }
+/* back to the full-screen card on phones (solid panel, card fills it) */
+@media (max-width: 799px) {
+  .hd-panel { background: var(--surface); animation: up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+  .hd-frame { background: var(--surface); }
+}
+/* Recent updates: Explore / Observation pins without a photo get a solid card in the pin's color with a big white icon */
+.ph.solid { background: var(--dot); color: #FFFFFF; }
+.ph.solid .ic { width: 46px; height: 46px; stroke-width: 1.7; opacity: 0.95; }
+
+/* Home page header uses the dashboards' nav + menu */
+.top .hd-right { display: flex; }
+.top .hd-right[hidden] { display: none !important; }
+@media (max-width: 720px) { .top .hd-nav { display: none; } }
+
+/* Places dashboard */
+.pl-head { margin-bottom: 8px; }
+.pl-map { flex: none; min-height: 40px; padding: 0 14px; font-size: 14px; }
+.pl-map .ic { width: 18px; height: 18px; }
+.pl-tabs { display: inline-flex; gap: 4px; padding: 4px; margin: 0 0 6px; border-radius: 12px; background: var(--tint); }
+.pl-tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 0; border-radius: 9px; background: none; color: var(--ink-soft);
+  font-size: 14.5px; font-weight: 650; cursor: pointer; }
+.pl-tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.pl-dot { width: 9px; height: 9px; border-radius: 50%; }
+.pl-dot.ex { background: #0891B2; } .pl-dot.ob { background: #475569; }
+.pl-n { font-weight: 600; color: var(--ink-soft); font-size: 13px; }
+.pl-hint { margin: 2px 2px 16px; font-size: 13.5px; color: var(--ink-soft); }
+.pl-card .hd-img { aspect-ratio: 16 / 9; }
+.pl-title { font-size: 16px; font-weight: 750; line-height: 1.3; }
+.pl-note { font-size: 13.5px; color: var(--ink-soft); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pl-who { font-size: 12.5px; color: var(--ink-soft); }
+.pl-card .ph.solid { background: var(--dot); color: #FFFFFF; }
+.pl-card .ph.solid .ic { width: 46px; height: 46px; stroke-width: 1.7; }

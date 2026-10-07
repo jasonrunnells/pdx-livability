@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Portland">
-<link rel="stylesheet" href="styles.css?v=20261006k">
+<link rel="stylesheet" href="styles.css?v=20261006n">
 </head>
 <body>
 
@@ -22,9 +22,24 @@
     <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
     <span>PDX Livability</span>
   </div>
-  <div class="who" id="who" hidden>
-    <span class="avatar" id="avatar"></span>
-    <button type="button" class="link" id="signOut">Sign out</button>
+  <div class="hd-right" id="who" hidden>
+    <nav class="hd-nav" aria-label="Pages">
+      <a href="homes.html">Homes</a>
+      <a href="places.html">Places</a>
+      <a href="maps/explorer/index.html">Map</a>
+    </nav>
+    <div class="hd-menu-wrap">
+      <button type="button" class="hd-menu-btn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menu">
+        <span class="avatar" id="avatar"></span>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+      </button>
+      <div class="hd-menu" id="menu" hidden>
+        <a href="homes.html" class="m-page">Homes</a>
+        <a href="places.html" class="m-page">Places</a>
+        <a href="maps/explorer/index.html" class="m-page">Map</a>
+        <button type="button" id="signOut">Sign out</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -158,6 +173,6 @@
 </aside>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="script.js?v=20261006c"></script>
+<script src="script.js?v=20261006h"></script>
 </body>
 </html>

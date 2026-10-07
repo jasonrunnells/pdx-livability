@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Homes dashboard (homes.html): every saved home with filters, sorting and a full detail panel.
+   Places dashboard (places.html): Explore pins and Observations, with filters and the map's own card.
    Shares look and helpers with the home page (badges, school check, boundary lookups are copied from script.js).
    ========================================================================== */
 (() => {
@@ -63,46 +63,19 @@ function featureAt(fc, x, y) {
 
 /* ---------- Attendance-area check ----------
    A home qualifies when its attendance area's grade is C or better AND its assigned high school's grade is B or better. */
-const RANK = { A: 0, B: 1, C: 2, D: 3, F: 4 };
-const atLeast = (g, min) => { const L = String(g || '').trim().toUpperCase()[0]; return L in RANK && RANK[L] <= RANK[min]; };
-// Match an attendance area's school name to the schools layer. Names differ between the two files
-// ("Lake Oswego Senior High School" vs "Lake Oswego High", "Tobias Elementary School" vs "L C Tobias Elementary"),
-// so compare the core name only, search the right level first (public schools), then the same district.
-const SCH_DROP = new Set(['school', 'sch', 'senior', 'jr', 'k', '8', 'elementary', 'middle', 'high', 'es', 'ms', 'hs']);
-const schCore = (v) => String(v || '').split('/')[0].toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9 ]/g, ' ')
-  .split(/\s+/).filter((w) => w && !SCH_DROP.has(w)).map((w) => (w === 'street' ? 'st' : w)).join(' ');
-const distKey = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/)[0] || '';
-function findSchool(all, name, type, district) {
-  const n = schCore(name); if (!n || !all) return null;
-  const ok = (m) => m === n || m.startsWith(n + ' ') || n.startsWith(m + ' ') || m.endsWith(' ' + n) || (' ' + m + ' ').includes(' ' + n + ' ');
-  const rank = (list) => { const h = list.filter((x) => ok(schCore(x.Label_Name))); return h.find((x) => schCore(x.Label_Name) === n) || h.find((x) => distKey(x.DISTRICT) === district) || h[0] || null; };
-  const pub = all.filter((x) => x.TYPE !== 'Private');
-  return rank(pub.filter((x) => x.School_Type === type)) || rank(pub.filter((x) => distKey(x.DISTRICT) === district));
-}
-async function schoolCheck(lng, lat) {
-  const [areas, schools] = await Promise.all([getJSON(DATA + 'schoolAttendanceAreas.geojson'), getJSON(DATA + 'schools.geojson')]);
-  const a = featureAt(areas, lng, lat);
-  if (!a) return { ok: false, missing: true, none: true, area: null, hs: null, hsName: null };
-  const g = (k) => a['SchoolAttendanceAreas_Clipped.' + k];
-  const hsName = g('Grade_10_Choice1_Name');
-  const hs = findSchool(schools.features.map((f) => f.properties), hsName, 'HS', distKey(g('Unified_SD_Name')));
-  const area = a['SAA_with_percentiles.csv.SAA_Grade'], hsGrade = hs?.GRADE_1 || null;
-  const has = (g) => /^[A-F]/i.test(String(g || '').trim());
-  const fails = (has(area) && !atLeast(area, 'C')) || (has(hsGrade) && !atLeast(hsGrade, 'B'));
-  const ok = atLeast(area, 'C') && atLeast(hsGrade, 'B');
-  return { ok, missing: !ok && !fails, area, hs: hsGrade, hsName };
-}
-const shortHS = (n) => String(n || 'High school').replace(/\s+(Senior\s+)?High School$/i, ' High').replace(/\s+School$/i, '');
-const gradesHTML = (r) => `<span>Area ${badge(r.area)}</span><span>${esc(shortHS(r.hsName))} ${badge(r.hs)}</span>`;
 
 /* ---------- State ---------- */
 let user = null, rows = [];
-const info = new Map();   // home id -> { hood, hoodId, city, check }
-const store = { get() { try { return JSON.parse(localStorage.getItem('pdx.homes.filters') || '{}'); } catch { return {}; } },
-                set(v) { try { localStorage.setItem('pdx.homes.filters', JSON.stringify(v)); } catch { /* private mode */ } } };
+const info = new Map();   // id -> { hood, city }
+const store = { get() { try { return JSON.parse(localStorage.getItem('pdx.places.filters') || '{}'); } catch { return {}; } },
+                set(v) { try { localStorage.setItem('pdx.places.filters', JSON.stringify(v)); } catch { /* private mode */ } } };
 const saved = store.get();
-const F = { text: '', chips: new Set(saved.chips || []), sort: saved.sort || 'new', lo: saved.lo ?? null, hi: saved.hi ?? null, beds: saved.beds || '', city: saved.city || '' };
-const homes = () => rows.filter((r) => r.kind === 'home');
+const F = { text: '', kind: saved.kind || 'explore', chips: new Set(saved.chips || []), sort: saved.sort || 'new', who: saved.who || '', city: saved.city || '' };
+const COLOR = { explore: '#0891B2', observation: '#475569' };
+const items = () => rows.filter((r) => r.kind === F.kind);
+const titleOf = (r) => r.title || (r.note ? String(r.note).slice(0, 48) + (String(r.note).length > 48 ? '…' : '') : (r.kind === 'explore' ? 'Place to explore' : 'Observation'));
+ICON.explore = '<circle cx="12" cy="12" r="8"/><path d="m15.2 8.8-1.9 4.5-4.5 1.9 1.9-4.5z"/>';
+ICON.observation = '<path d="M2.75 12S6 6 12 6s9.25 6 9.25 6S18 18 12 18s-9.25-6-9.25-6Z"/><circle cx="12" cy="12" r="2.75"/>';
 
 /* Menu (page links on phones + sign out) */
 const menu = $('#menu'), menuBtn = $('#menuBtn');
@@ -150,173 +123,104 @@ $('#signOut').onclick = async () => { await sb.auth.signOut(); location.href = '
 
 async function load() {
   $('#hdApp').hidden = false; $('#hdFilters').hidden = false;
-  $('#hdGrid').innerHTML = '<p class="empty">Loading homes…</p>';
-  const { data, error } = await sb.from('places').select('*').eq('kind', 'home').order('created_at', { ascending: false });
+  $('#hdGrid').innerHTML = '<p class="empty">Loading places…</p>';
+  const { data, error } = await sb.from('places').select('*').in('kind', ['explore', 'observation']).order('created_at', { ascending: false });
   if (error) { $('#hdGrid').innerHTML = `<p class="empty">Couldn't load: ${esc(error.message)}</p>`; return; }
-  rows = data; syncControls(); render(); enrich();
-  sb.channel('homes-dash').on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, (p) => {
+  rows = data; fillSelects(); syncControls(); render(); enrich();
+  sb.channel('places-dash').on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, (p) => {
     if (p.eventType === 'DELETE') rows = rows.filter((r) => r.id !== p.old.id);
-    else if (p.new.kind === 'home') { rows = [p.new, ...rows.filter((r) => r.id !== p.new.id)]; info.delete(p.new.id); }
-    render(); enrich();
+    else if (p.new.kind === 'explore' || p.new.kind === 'observation') rows = [p.new, ...rows.filter((r) => r.id !== p.new.id)];
+    else rows = rows.filter((r) => r.id !== p.new.id);
+    fillSelects(); render(); enrich();
   }).subscribe();
 }
-
-// Neighborhood and city for every home (boundary files are shared with the map)
+// Neighborhood and city for every pin (boundary files are shared with the map)
 async function enrich() {
   const [hoods, cities] = await Promise.all([getJSON(DATA + 'neighborhoods.geojson').catch(() => null), getJSON(DATA + 'cities.geojson').catch(() => null)]);
-  for (const r of homes()) {
+  let added = false;
+  for (const r of rows) {
     if (info.has(r.id) || r.lat == null) continue;
-    const h = hoods && featureAt(hoods, r.lng, r.lat), c = cities && featureAt(cities, r.lng, r.lat);
-    const check = await schoolCheck(r.lng, r.lat).catch(() => null);
-    info.set(r.id, { hood: h?.Name, hoodId: h?.RegionID, city: c?.NAME, county: await countyValue(r.address), check });
+    info.set(r.id, { hood: hoods && featureAt(hoods, r.lng, r.lat)?.Name, city: cities && featureAt(cities, r.lng, r.lat)?.NAME }); added = true;
   }
-  fillCities(); render();
+  if (added) { fillSelects(); render(); }
 }
 
-/* ---------- Filters ---------- */
-function fillCities() {
-  const sel = $('#fCity'), have = [...new Set(homes().map((r) => info.get(r.id)?.city).filter(Boolean))].sort();
-  const cur = F.city;
-  sel.innerHTML = '<option value="">All</option>' + have.map((c) => `<option ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('');
+/* ---------- Tabs + filters ---------- */
+function fillSelects() {
+  const opts = (sel, vals, cur, all) => { $(sel).innerHTML = `<option value="">${all}</option>` + vals.map((v) => `<option ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join(''); };
+  opts('#fWho', [...new Set(rows.map((r) => r.created_by_name).filter(Boolean))].sort(), F.who, 'Anyone');
+  opts('#fCity', [...new Set(rows.map((r) => info.get(r.id)?.city).filter(Boolean))].sort(), F.city, 'All');
+  $('#nExplore').textContent = rows.filter((r) => r.kind === 'explore').length || '';
+  $('#nObs').textContent = rows.filter((r) => r.kind === 'observation').length || '';
 }
 function syncControls() {
-  $('#fSort').value = F.sort; $('#fBeds').value = F.beds; syncPrice();
+  $('#fSort').value = F.sort;
+  document.querySelectorAll('.pl-tab').forEach((t) => t.setAttribute('aria-selected', t.dataset.kind === F.kind));
+  document.querySelectorAll('.obs-only').forEach((b) => { b.hidden = F.kind !== 'observation'; });
+  if (F.kind !== 'observation') F.chips.delete('fromExplore');
   document.querySelectorAll('.hd-chip').forEach((b) => { const on = F.chips.has(b.dataset.f); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
-  const n = F.chips.size + (F.lo != null || F.hi != null ? 1 : 0) + (F.beds ? 1 : 0) + (F.city ? 1 : 0) + (F.sort !== 'new' ? 1 : 0);
+  const n = F.chips.size + (F.who ? 1 : 0) + (F.city ? 1 : 0) + (F.sort !== 'new' ? 1 : 0);
   $('#fCount').hidden = !n; $('#fCount').textContent = n; $('#fBtn').classList.toggle('active', n > 0);
   $('#fReset').hidden = !(F.text || n);
+  $('#plHint').textContent = F.kind === 'explore' ? 'Places to check out. On the map, press and hold anywhere (right-click on a computer) to add one.'
+    : 'Notes from the road. On the map, tap the pin button to add one where you are.';
+  $('#fText').placeholder = F.kind === 'explore' ? 'Search Explore' : 'Search observations';
 }
 let lastFilterChange = 0;
-function changed() { lastFilterChange = performance.now(); store.set({ chips: [...F.chips], sort: F.sort, lo: F.lo, hi: F.hi, beds: F.beds, city: F.city }); syncControls(); render(); }
+function changed() { lastFilterChange = performance.now(); store.set({ kind: F.kind, chips: [...F.chips], sort: F.sort, who: F.who, city: F.city }); syncControls(); render(); }
+document.querySelectorAll('.pl-tab').forEach((t) => t.addEventListener('click', () => { if (F.kind === t.dataset.kind) return; F.kind = t.dataset.kind; changed(); }));
 $('#fText').addEventListener('input', (e) => { F.text = e.target.value.trim().toLowerCase(); changed(); });
-document.querySelectorAll('.hd-chip').forEach((b) => b.addEventListener('click', () => {
-  const k = b.dataset.f;
-  if (F.chips.has(k)) F.chips.delete(k); else { F.chips.add(k); if (k === 'visited') F.chips.delete('notvisited'); if (k === 'notvisited') F.chips.delete('visited'); }
-  changed();
-}));
+document.querySelectorAll('.hd-chip').forEach((b) => b.addEventListener('click', () => { const k = b.dataset.f; if (F.chips.has(k)) F.chips.delete(k); else F.chips.add(k); changed(); }));
 $('#fSort').onchange = (e) => { F.sort = e.target.value; changed(); };
-$('#fBeds').onchange = (e) => { F.beds = e.target.value; changed(); };
+$('#fWho').onchange = (e) => { F.who = e.target.value; changed(); };
 $('#fCity').onchange = (e) => { F.city = e.target.value; changed(); };
-$('#fReset').onclick = () => { F.text = ''; $('#fText').value = ''; F.chips.clear(); F.sort = 'new'; F.lo = F.hi = null; F.beds = F.city = ''; changed(); };
-/* Price range slider: spans the cheapest to the priciest saved home (in $5k steps). Null ends mean "no limit". */
-const fLo = $('#fLo'), fHi = $('#fHi');
-function priceBounds() {
-  const p = homes().map((r) => +r.price).filter((v) => v > 0);
-  if (p.length < 2) return null;
-  const step = 5000, lo = Math.floor(Math.min(...p) / step) * step, hi = Math.ceil(Math.max(...p) / step) * step;
-  return lo < hi ? { lo, hi, step } : null;
-}
-function syncPrice() {
-  const b = priceBounds(), box = $('#fPrice');
-  box.hidden = !b; if (!b) return;
-  for (const el of [fLo, fHi]) { el.min = b.lo; el.max = b.hi; el.step = b.step; }
-  const lo = F.lo == null ? b.lo : Math.max(b.lo, Math.min(F.lo, b.hi)), hi = F.hi == null ? b.hi : Math.min(b.hi, Math.max(F.hi, b.lo));
-  fLo.value = lo; fHi.value = hi;
-  const a = ((lo - b.lo) / (b.hi - b.lo)) * 100, z = ((hi - b.lo) / (b.hi - b.lo)) * 100;
-  $('#fFill').style.left = a + '%'; $('#fFill').style.right = (100 - z) + '%';
-  $('#fPriceLbl').textContent = F.lo == null && F.hi == null ? `Any · ${shortK(b.lo)} – ${shortK(b.hi)}` : `${shortK(lo)} – ${shortK(hi)}`;
-}
-function onRange(which) {
-  const b = priceBounds(); if (!b) return;
-  let lo = +fLo.value, hi = +fHi.value;
-  if (lo > hi) { if (which === 'lo') lo = hi; else hi = lo; }
-  F.lo = lo <= b.lo ? null : lo; F.hi = hi >= b.hi ? null : hi;
-  changed();
-}
-fLo.addEventListener('input', () => onRange('lo')); fHi.addEventListener('input', () => onRange('hi'));
+$('#fReset').onclick = () => { F.text = ''; $('#fText').value = ''; F.chips.clear(); F.sort = 'new'; F.who = F.city = ''; changed(); };
 syncControls();
 
-// County market value for an address, from the lot address files (6th column)
-const WORDS = { street: 'st', avenue: 'ave', av: 'ave', road: 'rd', drive: 'dr', boulevard: 'blvd', lane: 'ln', court: 'ct', place: 'pl',
-  terrace: 'ter', circle: 'cir', parkway: 'pkwy', highway: 'hwy', north: 'n', south: 's', east: 'e', west: 'w',
-  northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', saint: 'st', mount: 'mt', fort: 'ft' };
-const sNorm = (v) => String(v ?? '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 -]/g, ' ').replace(/-/g, ' ')
-  .split(/\s+/).filter(Boolean).map((w) => WORDS[w] || w).join(' ');
-async function countyValue(address) {
-  const parts = String(address || '').split(','), street = sNorm(parts[0].replace(/\s*(#|\bapt\b|\bunit\b|\bste\b).*$/i, '')), n0 = street.split(' ')[0];
-  if (!/^\d/.test(n0)) return null;
-  const rows = await getJSON(DATA + 'addr/' + n0.slice(0, 2) + '.json').catch(() => []);
-  const city = sNorm((parts[1] || '').trim()), hits = rows.filter((x) => sNorm(x[0]) === street);
-  const row = hits.find((x) => !city || sNorm(x[1]) === city) || hits[0];
-  return row && row[5] > 0 ? row[5] : null;
-}
-
-// "Best value": each home is scored against your other saved homes on three things, then the scores are averaged:
-//   1. price per sq ft (lower is better)
-//   2. beds + baths (more is better)
-//   3. list price vs. county market value (lower is better)
-// A home missing one of these is scored on the others; a home with none of them sorts last.
-function valueScores(list) {
-  const metric = [
-    (r) => (+r.price > 0 && +r.sqft > 0 ? -(r.price / r.sqft) : null),
-    (r) => (r.beds != null || r.baths != null ? (+r.beds || 0) + (+r.baths || 0) : null),
-    (r) => { const c = info.get(r.id)?.county; return +r.price > 0 && c ? -(r.price / c) : null; },
-  ];
-  const out = new Map(list.map((r) => [r.id, []]));
-  for (const m of metric) {
-    const vals = list.map((r) => [r.id, m(r)]).filter(([, v]) => v != null), lo = Math.min(...vals.map((x) => x[1])), hi = Math.max(...vals.map((x) => x[1]));
-    for (const [id, v] of vals) out.get(id).push(hi > lo ? (v - lo) / (hi - lo) : 0.5);
-  }
-  return new Map([...out].map(([id, a]) => [id, a.length ? a.reduce((x, y) => x + y, 0) / a.length : -1]));
-}
 function filtered() {
-  const list = homes().filter((r) => {
+  const list = items().filter((r) => {
     const x = info.get(r.id) || {};
-    if (F.text && ![r.address, x.hood, x.city].some((v) => String(v || '').toLowerCase().includes(F.text))) return false;
-    if (F.chips.has('priority') && !r.priority) return false;
-    if (F.chips.has('visited') && !r.visited) return false;
-    if (F.chips.has('notvisited') && r.visited) return false;
-    if (F.lo != null && !(+r.price >= F.lo)) return false;
-    if (F.hi != null && !(+r.price > 0 && +r.price <= F.hi)) return false;
-    if (F.beds && !(+r.beds >= +F.beds)) return false;
+    if (F.text && ![r.title, r.note, x.hood, x.city].some((v) => String(v || '').toLowerCase().includes(F.text))) return false;
+    if (F.chips.has('photos') && !(r.photos || []).length) return false;
+    if (F.chips.has('notes') && !r.note) return false;
+    if (F.chips.has('fromExplore') && !r.visited) return false;
+    if (F.who && r.created_by_name !== F.who) return false;
     if (F.city && x.city !== F.city) return false;
     return true;
   });
-  const by = { priceAsc: (a, b) => (a.price || 9e9) - (b.price || 9e9), priceDesc: (a, b) => (b.price || 0) - (a.price || 0),
-               rating: (a, b) => (b.rating || 0) - (a.rating || 0), sqft: (a, b) => (b.sqft || 0) - (a.sqft || 0),
-               new: (a, b) => new Date(b.created_at) - new Date(a.created_at),
-               old: (a, b) => new Date(a.created_at) - new Date(b.created_at),
-               value: null };
-  if (F.sort === 'value') { const sc = valueScores(list); return list.sort((a, b) => sc.get(b.id) - sc.get(a.id)); }
+  const by = { new: (a, b) => new Date(b.created_at) - new Date(a.created_at), old: (a, b) => new Date(a.created_at) - new Date(b.created_at),
+               az: (a, b) => titleOf(a).localeCompare(titleOf(b)) };
   return list.sort(by[F.sort] || by.new);
 }
 
 /* ---------- Cards ---------- */
-function schoolLine(x) {
-  const c = x?.check;
-  if (!c) return '<span class="muted">Checking schools…</span>';
-  if (c.none) return '<span class="muted">No attendance area</span>';
-  const st = c.ok ? ['ok', 'check'] : c.missing ? ['missing', 'info'] : ['fail', 'cross'];
-  return `<span class="hd-q ${st[0]}">${ic(st[1])}</span><span>Area ${badge(c.area)}</span><span class="hd-hs"><em>${esc(shortHS(c.hsName))}</em>${badge(c.hs)}</span>`;
-}
 function card(r) {
-  const x = info.get(r.id), photo = (r.photos || [])[0];
-  const specs = [r.beds != null ? `${r.beds} bd` : null, r.baths != null ? `${r.baths} ba` : null, r.sqft ? `${(+r.sqft).toLocaleString()} sq ft` : null].filter(Boolean).join(' · ');
-  const street = String(r.address || 'Home').split(',')[0];
-  return `<button type="button" class="hd-card${r.id === openId ? ' on' : ''}" data-id="${esc(r.id)}">
-    <div class="hd-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic('home')}</div>`}
-      ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}
-      <div class="hd-badges">${r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}${x?.check && !x.check.ok
-        ? `<span class="hd-warn ${x.check.missing ? 'missing' : 'fail'}" title="${x.check.missing ? 'Not enough school data' : 'Does not meet school requirements'}">${ic('info')}${x.check.missing ? 'No school data' : 'School req. not met'}</span>` : ''}</div>
-      ${specs ? `<div class="specbar">${specs}</div>` : ''}${(r.photos || []).length > 1 ? `<span class="hd-pcount" title="${r.photos.length} photos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5a2 2 0 0 1 2-2h1.8l1.4-2h4.6l1.4 2h1.8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.25"/></svg>${r.photos.length}</span>` : ''}</div>
+  const x = info.get(r.id), photo = (r.photos || [])[0], col = COLOR[r.kind];
+  const when = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  return `<button type="button" class="hd-card pl-card${r.id === openId ? ' on' : ''}" data-id="${esc(r.id)}" style="--dot:${col}">
+    <div class="hd-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph solid">${ic(r.kind)}</div>`}
+      ${r.kind === 'observation' && r.visited ? `<span class="visited">${ic('check')}From Explore</span>` : ''}
+      ${(r.photos || []).length > 1 ? `<span class="hd-pcount">${r.photos.length}</span>` : ''}</div>
     <div class="hd-body">
-      <div class="hd-r1"><span class="price">${r.price ? usd(r.price) : 'No price'}</span>${+r.rating > 0 ? `<span class="hd-rate">${STAR}${(+r.rating).toFixed(1)}</span>` : ''}</div>
-      <div class="addr">${esc(street)}</div>
+      <div class="pl-title">${esc(titleOf(r))}</div>
+      ${r.note && r.title ? `<div class="pl-note">${esc(r.note)}</div>` : ''}
       <div class="hd-place">${[x?.hood ? `<span class="nb-hood">${esc(x.hood)}</span>` : '', x?.city ? `<span class="nb-city">${esc(x.city)}</span>` : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
+      <div class="pl-who">${esc([r.created_by_name, when].filter(Boolean).join(' · '))}</div>
     </div>
   </button>`;
 }
+
 // Cards are kept and reused between renders (photos don't reload), then animated:
 // cards that stay slide to their new spot, cards that come back fade in, cards that drop out fade away.
 const nodes = new Map();   // home id -> { el, html }
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 function render() {
-  const all = homes(), list = filtered(), grid = $('#hdGrid');
+  const all = items(), list = filtered(), grid = $('#hdGrid');
   $('#hdCount').textContent = all.length ? (list.length === all.length ? all.length : `${list.length} of ${all.length}`) : '';
   if (!all.length || !list.length) {
-    grid.innerHTML = !all.length ? '<p class="empty">No homes saved yet.</p>'
-      : '<p class="empty">No homes match these filters. <button type="button" class="link" id="emptyReset">Reset filters</button></p>';
+    grid.innerHTML = !all.length ? (F.kind === 'explore' ? '<p class="empty">No Explore pins yet. On the map, press and hold anywhere to save a place to check out.</p>' : '<p class="empty">No observations yet. On the map, tap the pin button to add one where you are.</p>')
+      : '<p class="empty">Nothing matches these filters. <button type="button" class="link" id="emptyReset">Reset filters</button></p>';
     $('#emptyReset')?.addEventListener('click', () => $('#fReset').click());
     return;
   }

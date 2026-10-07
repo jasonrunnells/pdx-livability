@@ -17,8 +17,8 @@ const ICON = {
 };
 const ic = (k) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 const KIND = {
-  observation: { label: 'Observation', color: 'var(--hood)' },
-  explore: { label: 'Explore', color: '#E07A10' },
+  observation: { label: 'Observation', color: '#475569' },   // same colors as the map's pins
+  explore: { label: 'Explore', color: '#0891B2' },
   home: { label: 'Home', color: 'var(--teal)' },
 };
 const gate = $('#gate'), authed = $('#authed');
@@ -34,7 +34,7 @@ function updateCard(r) {
   const who = [r.created_by_name, dateStr(r.created_at)].filter(Boolean).join(' · ');
   const photo = (r.photos || [])[0];
   return `<a class="card" style="--dot:${k.color}" href="maps/explorer/index.html?pin=${r.id}">
-    <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic(ICON[r.kind] ? r.kind : 'explore')}</div>`}
+    <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph${r.kind === 'explore' || r.kind === 'observation' ? ' solid' : ''}">${ic(ICON[r.kind] ? r.kind : 'explore')}</div>`}
       <span class="chip"><i></i>${k.label}</span>${r.kind === 'home' && r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}</div>
     <div class="body"><div class="t">${esc(t)}</div><div class="w">${esc(who)}</div></div>
   </a>`;
@@ -60,7 +60,7 @@ function render(rows) {
 let cardY = 0;
 function openCard(id) {
   const panel = $('#cardPanel'), scrim = $('#cardScrim');
-  $('#cardFrame').src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1${matchMedia('(min-width: 800px)').matches ? '&wide=1' : ''}`;
+  $('#cardFrame').src = `maps/explorer/index.html?pin=${encodeURIComponent(id)}&embed=1&wide=1`   /* full-height card with the buttons always pinned, on phones and desktop */;
   if (panel.hidden) { panel.hidden = false; scrim.hidden = false; cardY = scrollY; Object.assign(document.body.style, { position: 'fixed', top: -cardY + 'px', left: '0', right: '0' }); }
 }
 function closeCard() {
@@ -219,6 +219,14 @@ $('#signin').addEventListener('submit', async (ev) => {
   user = data.user; await ensureName(); loadData();
 });
 $('#signOut').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+/* Header menu (page links on phones + sign out), same as the dashboards */
+{
+  const menu = $('#menu'), btn = $('#menuBtn');
+  const setMenu = (on) => { menu.hidden = !on; btn.setAttribute('aria-expanded', on); };
+  btn.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
+  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) setMenu(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+}
 
 /* ---------- Grade badges (same look and centering as the map) ---------- */
 const badge = (g) => { const L = String(g || '').trim().toUpperCase()[0]; return L ? `<span class="grade g-${esc(L).toLowerCase()}"><i>${esc(L)}</i></span>` : '<span class="grade none"><i>–</i></span>'; };

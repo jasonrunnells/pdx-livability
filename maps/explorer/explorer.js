@@ -68,6 +68,8 @@
       pGrocery:   '#148A3C',   // grocery store points
       pFood:      '#8338EC',   // restaurant points
       pHome:      '#E0234E',   // saved homes
+      pExplore:   '#0891B2',   // places to explore (press and hold)
+      pObs:       '#475569',   // observations (dropped at your location)
       shadow:     'rgba(84,70,56,0.50)',
       highlight:  'rgba(255,255,255,0.40)',
       accent:     'rgba(84,70,56,0.18)',
@@ -107,6 +109,8 @@
       pGrocery:   '#37C26A',
       pFood:      '#A974FF',
       pHome:      '#FF5C7F',
+      pExplore:   '#22C3E6',
+      pObs:       '#A3AEBD',
       shadow:     'rgba(0,0,0,0.55)',
       highlight:  'rgba(255,255,255,0.07)',
       accent:     'rgba(0,0,0,0.20)',
@@ -162,20 +166,43 @@
     return homesData;
   }
 
+  // Observations and Explore pins (same "places" table, kind = observation / explore)
+  const pinRows = new Map();                 // id -> row, for both kinds
+  const pinData = { pObs: null, pExplore: null };
+  const PIN_KIND = { pObs: 'observation', pExplore: 'explore' }, PIN_KEY = { observation: 'pObs', explore: 'pExplore' };
+  const pinTitle = (r) => r.title || (r.note ? String(r.note).slice(0, 40) + (String(r.note).length > 40 ? '…' : '') : (r.kind === 'explore' ? 'Place to explore' : 'Observation'));
+  const pinFeature = (r) => ({ type: 'Feature', id: r.id, geometry: { type: 'Point', coordinates: [r.lng, r.lat] }, properties: { id: r.id, title: pinTitle(r) } });
+  function pinFC(key) { return { type: 'FeatureCollection', features: [...pinRows.values()].filter((r) => r.kind === PIN_KIND[key] && r.lat != null).map(pinFeature) }; }
+  async function loadPins(key) {
+    if (!sb) throw new Error('Could not reach the shared database.');
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('Sign in on the home page to see your saved places.');
+    const { data, error } = await sb.from('places').select('*').eq('kind', PIN_KIND[key]);
+    if (error) throw error;
+    for (const r of data) pinRows.set(r.id, r);
+    return (pinData[key] = pinFC(key));
+  }
+  function refreshPins() {
+    for (const key of Object.keys(pinData)) { pinData[key] = pinFC(key); const src = map.getSource('ov-' + key); if (src && overlayLoaded[key]) src.setData(pinData[key]); }
+  }
+
   /* ---------- Boundary overlays (toggle on/off) ---------- */
   // Each file loads only the first time you switch it on.
   const OVERLAYS = [
     { key: 'hoods',  name: 'Neighborhoods', desc: 'Home values & your ratings',           color: 'hood',  file: 'data/neighborhoods.geojson' },
     { key: 'tracts', name: 'Census tracts', desc: 'Income, rent & who lives there',           color: 'tract', file: 'data/census.geojson' },
     { key: 'cities', name: 'Cities', desc: 'City limits',                  color: 'city',  file: 'data/cities.geojson' },
-    { key: 'sas',    name: 'School attendance areas', desc: 'Assigned schools & grades', color: 'sas',   file: 'data/schoolAttendanceAreas.geojson' },
+    { key: 'sas',    name: 'Attendance areas', desc: 'Assigned schools & grades', color: 'sas',   file: 'data/schoolAttendanceAreas.geojson' },
     // Places (points). Restaurants use a copy of the older file (it has names; the current one only has IDs).
     // It can't load from data/_OLD: GitHub Pages skips folders that start with an underscore.
+    // Homes saved from the home page (Supabase "places" table, kind = home)
+    { key: 'pHomes',   group: 'places', name: 'Homes', desc: 'Your saved homes',           color: 'pHome',    load: loadHomes, cache: () => homesData, label: 'address' },
+    // Shared pins added on the map: Explore (press and hold anywhere) and Observations (pin button, at your location)
+    { key: 'pExplore', group: 'places', name: 'Explore', desc: 'Places to check out',      color: 'pExplore', load: () => loadPins('pExplore'), cache: () => pinData.pExplore, label: 'title' },
+    { key: 'pObs',     group: 'places', name: 'Observations', desc: 'Notes from the road',    color: 'pObs',     load: () => loadPins('pObs'), cache: () => pinData.pObs, label: 'title' },
     { key: 'pSchools', group: 'places', name: 'Schools', desc: 'Grades & test scores',         color: 'pSchool',  file: 'data/schools.geojson',          label: 'Label_Name' },
     { key: 'pGrocery', group: 'places', name: 'Grocery stores', desc: 'Where to shop',  color: 'pGrocery', file: 'data/groceryStores.geojson',    label: 'Name' },
     { key: 'pFood',    group: 'places', name: 'Restaurants', desc: 'Saved restaurants',     color: 'pFood',    file: 'data/restaurants_named.geojson', label: 'USER_NAME' },
-    // Homes saved from the home page (Supabase "places" table, kind = home)
-    { key: 'pHomes',   group: 'places', name: 'Homes', desc: 'Your saved homes',           color: 'pHome',    load: loadHomes,                       label: 'address' },
   ];
   for (const o of OVERLAYS) o.group = o.group || 'bounds';
   const GROUPS = [{ id: 'bounds', title: 'Boundaries' }, { id: 'places', title: 'Places' }];
@@ -191,7 +218,7 @@
     for (const o of OVERLAYS) {
       if (overlayOn[o.key] && o.file && o.key !== 'sas') overlayLoaded[o.key] = true;
       if (o.key === 'hoods' && overlayOn.sas) overlayLoaded.hoods = true;   // attendance areas label with neighborhood names
-      const data = o.load ? (homesData || EMPTY) : o.key === 'sas' && sasData ? sasData : (overlayLoaded[o.key] && o.key !== 'sas' ? o.file : EMPTY);
+      const data = o.load ? (o.cache() || EMPTY) : o.key === 'sas' && sasData ? sasData : (overlayLoaded[o.key] && o.key !== 'sas' ? o.file : EMPTY);
       out['ov-' + o.key] = o.group === 'places'
         ? { type: 'geojson', data, cluster: true, clusterRadius: 42, clusterMaxZoom: 15,
             // homes: each cluster remembers whether it holds a priority home (prio = 1), so it can be styled like one
@@ -259,7 +286,8 @@
       paint: { 'text-color': c.hood, ...halo(1.8) } });
     // Places: colored dots with a white ring; names appear when zoomed in
     L.points = [];
-    for (const o of OVERLAYS.filter((x) => x.group === 'places')) {
+    // homes are listed first in the panel but drawn last, so their markers sit on top of other places
+    for (const o of OVERLAYS.filter((x) => x.group === 'places').sort((a, b) => (a.key === 'pHomes') - (b.key === 'pHomes'))) {
       // Clusters: a bigger dot with a count, sized by how many places it holds
       L.points.push({ id: o.key + '-pick', type: 'circle', source: 'ov-' + o.key, filter: ['==', ['id'], '__none__'], layout: vis(o.key),
         paint: { 'circle-color': c[o.color], 'circle-opacity': 0.25, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 17, 16, 26],
@@ -380,12 +408,21 @@
           } },
 
         /* Streets */
+        /* Railroads: classic map style — a thin solid line with short cross ties
+           (the ties are a second, wider line drawn as tiny dashes, so each dash reads as a tick across the track) */
         { id: 'rail', type: 'line', source: 'base', 'source-layer': 'streets', minzoom: 12,
+          filter: ['==', ['get', 'class'], 'rail'],
+          layout: { 'line-join': 'round' },
+          paint: {
+            'line-color': c.rail,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.7, 16, 1.3, 19, 2],
+          } },
+        { id: 'rail-ties', type: 'line', source: 'base', 'source-layer': 'streets', minzoom: 13,
           filter: ['==', ['get', 'class'], 'rail'],
           paint: {
             'line-color': c.rail,
-            'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 1.4, 19, 2.4],
-            'line-dasharray': [3, 2],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 13, 4, 16, 6, 19, 9],
+            'line-dasharray': [0.25, 2.2],
           } },
         { id: 'streets-case', type: 'line', source: 'base', 'source-layer': 'streets',
           filter: ['!=', ['get', 'class'], 'rail'],
@@ -550,12 +587,25 @@
   map.on('resize', fitMinZoom);
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
-  map.addControl(new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true },
+  const geo = new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true, timeout: 15000 },
     trackUserLocation: true,
     showAccuracyCircle: true,
     fitBoundsOptions: { maxZoom: 16 },
-  }), 'top-right');
+  });
+  map.addControl(geo, 'top-right');
+  // The map only pans around the Portland region, so a location outside it can't be shown: say so instead of spinning
+  // Tracking reports every new position, so without this the message would repeat and the button keep spinning:
+  // show it once per press, then switch tracking off (the button returns to normal).
+  let outNoted = false;
+  geo.on('trackuserlocationstart', () => { outNoted = false; });
+  geo.on('outofmaxbounds', () => {
+    if (outNoted) return;
+    outNoted = true;
+    toast('You’re outside the Portland area, so your location can’t be shown on this map.');
+    setTimeout(() => { if (geo._watchState && geo._watchState !== 'OFF') geo.trigger(); }, 0);
+  });
+  geo.on('error', (e) => toast(e?.code === 1 ? 'Allow location access to show where you are.' : 'Couldn’t find your location. Try again in a moment.'));
   map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 90 }), 'bottom-left');
   map.addControl(new maplibregl.AttributionControl({
     compact: true,
@@ -568,6 +618,8 @@
   // Place markers: colored disc, white ring, soft shadow, white glyph
   const GLYPH = {
     pHomes:   { fill: 'M12 4.2 3.6 11.3h2.6V19h4.4v-4.6h2.8V19h4.4v-7.7h2.6Z' },
+    pExplore: { stroke: 'M12 4.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 1 0 0-15Z', fill: 'm15.3 8.7-2.1 4.5-4.5 2.1 2.1-4.5Z' },
+    pObs:     { stroke: 'M3 12s3.2-5.5 9-5.5S21 12 21 12s-3.2 5.5-9 5.5S3 12 3 12Z', fill: 'M12 9.4a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 1 0 0-5.2Z' },
     pSchools: { fill: 'M12 5 2.5 9.8 12 14.6l9.5-4.8ZM6.4 12.6v3.6c0 1.6 2.6 3.2 5.6 3.2s5.6-1.6 5.6-3.2v-3.6L12 15.4Z' },
     pGrocery: { stroke: 'M3.5 5.5h2.3l2 8.6h8.9l1.8-6.4H6.6', dots: [[9.3, 17.6], [15.6, 17.6]] },
     pFood:    { stroke: 'M7.5 4.5v15M5.5 4.5v4.2a2 2 0 0 0 4 0V4.5M16.5 19.5v-15c-2 1.6-2.7 5-2.7 7.8h2.7' },
@@ -657,14 +709,15 @@
       const icon = (o, g) => (g.id === 'places'
         ? `<img class="lp-icon" data-key="${o.key}" alt="" src="${drawPoint(o.key, themeNow()).toDataURL()}">`
         : `<span class="lp-area" data-color="${o.color}" style="--sw:${c[o.color]}"></span>`);
-      panel.innerHTML = GROUPS.map((g) => `<div class="lp-group">
-        <div class="lp-title"><span>${g.title}</span></div>
-        ${OVERLAYS.filter((o) => o.group === g.id).map((o) => `
-        <label class="lp-row" data-color="${o.color}" style="--sw:${c[o.color]}">
+      // Layers panel: a plain list — icon, name, and a small switch in the layer's color. Boundaries show one at a time.
+      panel.innerHTML = GROUPS.map((g) => `<div class="lp-group lp-${g.id}">
+        <div class="lp-title"><span>${g.title}</span>${g.id === 'bounds' ? '<em>one at a time</em>' : ''}</div>
+        <div class="lp-list">${OVERLAYS.filter((o) => o.group === g.id).map((o) => `
+        <label class="lp-item" data-color="${o.color}" style="--sw:${c[o.color]}">
           ${icon(o, g)}
-          <span class="lp-text"><b>${o.name}</b>${o.desc ? `<small>${o.desc}</small>` : ''}</span>
+          <span class="lp-name">${o.name}</span>
           <input type="checkbox" class="layers-switch" data-key="${o.key}" ${overlayOn[o.key] ? 'checked' : ''}>
-        </label>`).join('')}</div>`).join('');
+        </label>`).join('')}</div></div>`).join('');
       document.body.appendChild(panel);
       const btn = wrap.querySelector('button');
       const toggle = (open) => { panel.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
@@ -788,7 +841,7 @@
   function closeSheet() {
     if (EMBED_WIDE) { tellClosed(); return; }   // desktop panel: the page closes it
     if (EMBED) setTimeout(tellClosed, 320);      // phone: slide the card down like the map, then tell the page
-    sheetLock = false; sheetBody.onclick = null;
+    sheetLock = false; sheetBody.onclick = null; draftMarker?.remove(); draftMarker = null;   // drop any unsaved new pin
     sheet.classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); document.body.classList.remove('sheet-open');
     clearSelection();
   }
@@ -1432,6 +1485,7 @@
     openToken++;
     const p = f.properties, ll = f.geometry.coordinates;
     if (key === 'pHomes') return openHome(p.id);
+    if (PIN_KIND[key]) return openPin(p.id);
     select('point', key, f.id);
     let html = '';
     if (key === 'pGrocery') html = placeCard(p.Name, [p.Address, p.City].filter(Boolean).join(', '), ll, p.Notes ? `<div class="note">${esc(p.Notes)}</div>` : '');
@@ -1468,6 +1522,7 @@
     dismissTap = panelOpen || searchOpen || searchClosedAt === e.timeStamp || (mobile.matches && sheet.classList.contains('open') && !sheetLock);
   }, true);
   map.on('click', async (e) => {
+    if (performance.now() - pressedAt < 700) { dismissTap = false; return; }   // this tap ended a press-and-hold (new Explore pin)
     if (dismissTap) { dismissTap = false; if (!sheetLock) closeSheet(); return; }
     // 1) places: clusters zoom in, dots open a card
     const pts = map.queryRenderedFeatures(e.point, { layers: visibleLayers(['-cluster', '-dot'], 'places') });
@@ -1655,23 +1710,168 @@
       } catch (err) { toast(err.message || String(err)); }
     });
   }
-  // Opened from a home card on the home page (?pin=<id>): show Homes and go to it.
-  const pinId = new URLSearchParams(location.search).get('pin');
-  if (pinId) {
-    const sw = () => document.querySelector('.layers-switch[data-key="pHomes"]');
-    map.once('load', async () => {
-      if (sw()) sw().checked = true;
-      setOverlay('pHomes', true);
-      try {
-        const fc = homesData || await loadHomes();
-        const f = fc.features.find((x) => String(x.id) === pinId);
-        if (f) {
-          map.jumpTo({ center: f.geometry.coordinates, zoom: 17 }); map.getSource('ov-pHomes').setData(fc);
-          if (EMBED) openHome(f.id); else map.once('idle', () => openHome(f.id));   // embedded: show the card right away
-        }
-      } catch (err) { toast(err.message || String(err)); }
-    });
+  /* ---------- Observations & Explore pins ----------
+     Observation: the pin button drops one at your current location (a note from the road).
+     Explore: press and hold anywhere on the map (right-click on a computer) to save a place to check out;
+     after visiting, "Mark visited" turns it into an Observation. Every pin needs a title, a note or a photo. */
+  const KIND_LABEL = { observation: 'Observation', explore: 'Explore' };
+  const ensureLayer = (key) => { if (!overlayOn[key]) { setOverlay(key, true); const b = document.querySelector(`.layers-switch[data-key="${key}"]`); if (b) b.checked = true; } };
+  function pinCard(r) {
+    const key = PIN_KEY[r.kind], color = PALETTE[themeNow()][key === 'pObs' ? 'pObs' : 'pExplore'], photos = r.photos || [];
+    const who = [r.created_by_name, r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null].filter(Boolean).join(' · ');
+    return `<div class="sec"><span class="kind-tag" style="--kc:${color}">${KIND_LABEL[r.kind]}</span><h2 class="pin-title">${esc(pinTitle(r))}</h2>${who ? `<div class="sub">${esc(who)}</div>` : ''}</div>
+      ${photos.length ? `<div class="sec"><div class="photowrap"><div class="photos">${photos.map((u) => `<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${photos.length > 1 ? '<button type="button" class="parrow prev" aria-label="Previous photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg></button><button type="button" class="parrow next" aria-label="Next photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>' : ''}</div></div>` : ''}
+      ${r.note && r.title ? `<div class="sec"><div class="pin-note">${esc(r.note)}</div></div>` : ''}
+      ${r.link ? `<div class="sec"><a class="go" target="_blank" rel="noopener" href="${esc(r.link)}">Open link</a></div>` : ''}
+      <div class="foot"><div class="pills two">${dirs([r.lng, r.lat])}${r.kind === 'explore' ? '<button type="button" class="btn alt" data-act="visited">Mark visited</button>' : r.visited ? '<button type="button" class="btn ghost-btn" data-act="unvisit">Mark unvisited</button>' : ''}</div>
+      <div class="acts"><button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>`;
   }
+  function openPin(id) {
+    const r = pinRows.get(id); if (!r) return;
+    openToken++;
+    select('point', PIN_KEY[r.kind], id);
+    openSheet(pinCard(r));
+    sheetBody.onclick = (e) => pinAction(e, id);
+    revealPoint([r.lng, r.lat]);
+  }
+  async function pinAction(e, id) {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const r = pinRows.get(id); if (!r) return;
+    if (b.dataset.act === 'edit') return pinForm({ ...r });
+    if (b.dataset.act === 'del') {
+      if (!confirm(`Delete this ${r.kind === 'explore' ? 'place' : 'observation'}?`)) return;
+      const { error } = await sb.from('places').delete().eq('id', id);
+      if (error) return toast(error.message);
+      pinRows.delete(id); refreshPins(); closeSheet(); return;
+    }
+    if (b.dataset.act === 'visited') {   // explore -> observation; opens the form so you can add what you thought
+      // visited = true remembers it started as an Explore pin, so it can be moved back with "Mark unvisited"
+      const { data, error } = await sb.from('places').update({ kind: 'observation', visited: true }).eq('id', id).select().single();
+      if (error) return toast(error.message);
+      pinRows.set(id, data); ensureLayer('pObs'); refreshPins(); toast('Moved to Observations — add a note or photos about the visit.');
+      pinForm({ ...data });
+    }
+    if (b.dataset.act === 'unvisit') {   // observation that came from an Explore pin -> back to Explore
+      const { data, error } = await sb.from('places').update({ kind: 'explore', visited: false }).eq('id', id).select().single();
+      if (error) return toast(error.message);
+      pinRows.set(id, data); ensureLayer('pExplore'); refreshPins(); toast('Moved back to Explore.'); openPin(id);
+    }
+  }
+  // Add / edit form (title, note, link for Explore, photos)
+  let draftMarker = null;
+  const clearDraft = () => { draftMarker?.remove(); draftMarker = null; };
+  function pinForm(o) {
+    const isNew = !o.id, k = o.kind, pics = [...(o.photos || [])], files = [], v = (x) => esc(x ?? '');
+    openSheet(`<div class="sec"><span class="kind-tag" style="--kc:${PALETTE[themeNow()][PIN_KEY[k]]}">${KIND_LABEL[k]}</span>
+      <h2>${isNew ? (k === 'explore' ? 'Save a place to explore' : 'New observation') : 'Edit'}</h2>
+      <div class="sub">${isNew ? (k === 'explore' ? 'Something to check out on a future trip.' : 'A note from where you are right now.') : ''}</div></div>
+      <form class="pf">
+        <label class="pl">${k === 'explore' ? 'Place name' : 'Title'}</label><input name="title" placeholder="${k === 'explore' ? 'e.g. Laurelhurst Park' : 'e.g. Quiet street, great trees'}" value="${v(o.title)}">
+        <label class="pl">Note</label><textarea name="note" rows="3" placeholder="${k === 'explore' ? 'Why we want to go' : 'What we noticed'}">${v(o.note)}</textarea>
+        ${k === 'explore' ? `<label class="pl">Link <small>(optional)</small></label><input name="link" inputmode="url" placeholder="Website or listing" value="${v(o.link)}">` : ''}
+        <label class="pph">Add photos<input type="file" accept="image/*" multiple hidden></label><div class="pth"></div>
+        <div class="perr"></div>
+        <div class="pills two pf-acts"><button type="button" class="btn pf-cancel">Cancel</button><button class="btn pf-save">${isNew ? 'Save' : 'Save changes'}</button></div>
+      </form>`);
+    sheetLock = true; sheetBody.onclick = null;
+    if (mobile.matches && !sheetFull) expandSheet();
+    const f = sheetBody.querySelector('form'), save = f.querySelector('.pf-save'), th = f.querySelector('.pth'), err = f.querySelector('.perr');
+    const gv = (n) => f.elements[n]?.value.trim() || '';
+    const thumbs = () => { th.innerHTML = [...pics.map((u, i) => `<img data-p="${i}" src="${esc(u)}">`), ...files.map((x, i) => `<img data-f="${i}" src="${URL.createObjectURL(x)}">`)].join(''); };
+    th.onclick = (e) => { const i = e.target; if (i.dataset.p != null) pics.splice(+i.dataset.p, 1); else if (i.dataset.f != null) files.splice(+i.dataset.f, 1); else return; thumbs(); };
+    f.querySelector('input[type=file]').onchange = (e) => { files.push(...e.target.files); e.target.value = ''; thumbs(); };
+    thumbs();
+    f.querySelector('.pf-cancel').onclick = () => { clearDraft(); sheetLock = false; if (isNew) closeSheet(); else openPin(o.id); };
+    f.onsubmit = async (ev) => {
+      ev.preventDefault(); err.textContent = '';
+      if (!gv('title') && !gv('note') && !pics.length && !files.length) { err.textContent = 'Add a title, a note or a photo.'; return; }
+      save.disabled = true; save.textContent = 'Saving…';
+      try {
+        const urls = []; for (const x of files) urls.push(await upload(x));
+        const user = await signedInUser();
+        const rec = { title: gv('title') || null, note: gv('note') || null, photos: [...pics, ...urls], ...(k === 'explore' ? { link: norm(gv('link') || null) } : {}) };
+        const q = isNew
+          ? sb.from('places').insert({ ...rec, kind: k, lat: o.lat, lng: o.lng, created_by_name: user?.user_metadata?.name || null })
+          : sb.from('places').update(rec).eq('id', o.id);
+        const { data, error } = await q.select().single();
+        if (error) throw error;
+        pinRows.set(data.id, data); clearDraft(); ensureLayer(PIN_KEY[data.kind]); refreshPins(); sheetLock = false; openPin(data.id);
+      } catch (x) { err.textContent = x.message || 'Could not save. Check your connection.'; save.disabled = false; save.textContent = isNew ? 'Save' : 'Save changes'; }
+    };
+  }
+  async function newPin(kind, lng, lat) {
+    const user = await signedInUser();
+    if (!user) { toast('Sign in on the home page to add places.'); return; }
+    clearDraft();
+    const el = document.createElement('div'); el.className = 'draft-pin'; el.style.setProperty('--kc', PALETTE[themeNow()][PIN_KEY[kind]]);
+    draftMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(map);
+    cameraToPoint([lng, lat], Math.max(map.getZoom(), 15));
+    pinForm({ kind, lng, lat });
+  }
+  // Pin button (under the layers button): an Observation at your current location
+  class PinControl {
+    onAdd() {
+      const wrap = document.createElement('div');
+      wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group pin-ctrl';
+      wrap.innerHTML = `<button type="button" aria-label="Add an observation at my location" title="Add an observation here"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v4.5M8.5 3.5h7l-1.2 6 3.2 3V14h-11v-1.5l3.2-3z"/></svg></button>`;
+      wrap.querySelector('button').onclick = () => {
+        if (!navigator.geolocation) return toast('Location isn’t available on this device.');
+        toast('Finding your location…');
+        navigator.geolocation.getCurrentPosition((p) => {
+          const { longitude: x, latitude: y } = p.coords, [[x0, y0], [x1, y1]] = BOUNDS;
+          if (x < x0 || x > x1 || y < y0 || y > y1) { toast('You’re outside the Portland area, so an observation can’t be added here.'); return; }
+          newPin('observation', x, y);
+        },
+          () => toast('Allow location access to add an observation here.'), { enableHighAccuracy: true, timeout: 15000 });
+      };
+      return wrap;
+    }
+    onRemove() {}
+  }
+  if (!EMBED) map.addControl(new PinControl(), 'top-right');
+  // Press and hold (phones) / right-click (computers): save a place to explore
+  let pressedAt = -1e9, holdTimer = 0, holdStart = null;
+  const cancelHold = () => { clearTimeout(holdTimer); holdStart = null; };
+  map.getCanvas().addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || EMBED) { cancelHold(); return; }
+    const t = e.touches[0], r = map.getCanvas().getBoundingClientRect();
+    holdStart = { x: t.clientX, y: t.clientY };
+    holdTimer = setTimeout(() => {
+      if (!holdStart) return;
+      pressedAt = performance.now(); navigator.vibrate?.(30);
+      const ll = map.unproject([holdStart.x - r.left, holdStart.y - r.top]);
+      newPin('explore', ll.lng, ll.lat); holdStart = null;
+    }, 600);
+  }, { passive: true });
+  map.getCanvas().addEventListener('touchmove', (e) => { if (holdStart && Math.hypot(e.touches[0].clientX - holdStart.x, e.touches[0].clientY - holdStart.y) > 10) cancelHold(); }, { passive: true });
+  map.getCanvas().addEventListener('touchend', cancelHold, { passive: true });
+  map.getCanvas().addEventListener('touchcancel', cancelHold, { passive: true });
+  map.on('contextmenu', (e) => { if (EMBED) return; pressedAt = performance.now(); newPin('explore', e.lngLat.lng, e.lngLat.lat); });
+  map.getCanvas().addEventListener('contextmenu', (e) => e.preventDefault());
+  // one-time tip
+  map.once('click', async () => {
+    let seen = false; try { seen = localStorage.getItem('pdx.tip.explore') === '1'; } catch { /* private mode */ }
+    if (seen || EMBED || !(await signedInUser())) return;
+    try { localStorage.setItem('pdx.tip.explore', '1'); } catch { /* private mode */ }
+    toast(matchMedia('(hover: none)').matches ? 'Tip: press and hold anywhere to save a place to explore.' : 'Tip: right-click anywhere to save a place to explore.');
+  });
+
+  // Opened from the home page or Homes page (?pin=<id>): turn on that pin's layer and open its card.
+  const pinId = new URLSearchParams(location.search).get('pin');
+  if (pinId) map.once('load', async () => {
+    try {
+      const { data: row } = sb ? await sb.from('places').select('*').eq('id', pinId).maybeSingle() : { data: null };
+      const key = row?.kind === 'home' || !row ? 'pHomes' : PIN_KEY[row.kind];
+      if (!key) return;
+      const sw = document.querySelector(`.layers-switch[data-key="${key}"]`); if (sw) sw.checked = true;
+      setOverlay(key, true);
+      const fc = key === 'pHomes' ? (homesData || await loadHomes()) : (pinData[key] || await loadPins(key));
+      const f = fc.features.find((x) => String(x.id) === pinId); if (!f) return;
+      map.jumpTo({ center: f.geometry.coordinates, zoom: 17 }); map.getSource('ov-' + key)?.setData(fc);
+      const open = () => (key === 'pHomes' ? openHome(f.id) : openPin(f.id));
+      if (EMBED) open(); else map.once('idle', open);   // embedded: show the card right away
+    } catch (err) { toast(err.message || String(err)); }
+  });
 
   // Follow the phone/computer light–dark setting, live.
   darkQuery.addEventListener('change', () => { map.setStyle(buildStyle(themeNow())); layersCtrl.recolor(); });
