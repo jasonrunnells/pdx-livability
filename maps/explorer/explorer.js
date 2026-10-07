@@ -15,7 +15,7 @@
   /* ---------- Settings ---------- */
   const TILES = {
     base:      new URL('tiles/base.pmtiles', location.href).href,
-    buildings: new URL('tiles/buildings.pmtiles', location.href).href,
+    buildings: new URL('tiles/buildings.pmtiles?v=2', location.href).href,   // ?v= busts the browser cache when tiles are rebuilt
     lots:      new URL('tiles/lots.pmtiles', location.href).href,
   };
   // Free, no-key elevation tiles (AWS Open Data "Terrain Tiles") used for hillshade.
@@ -30,6 +30,8 @@
   const METRO  = [[-123.1535, 45.2814], [-122.3315, 45.6574]];  // Metro boundary extent
   const BOUNDS = [[-124.30, 44.30], [-121.20, 46.60]];   // how far you can pan
   const ZOOM   = { min: 8, max: 19.5, buildings: 15 };
+  let is3D = false;              // 3D view: tilted map, raised hills and buildings (button under the zoom controls)
+  const EXAGGERATE = 1.4;        // how much the hills are stretched in 3D
 
   /* ---------- Colors (light = the layer guide) ---------- */
   const PALETTE = {
@@ -50,6 +52,8 @@
       rail:       '#A49D95',
       building:   '#D9CCBE',
       buildingLine: '#D3C7B9',
+      building3d: '#D6C8B9',
+      sky:        '#C9DBEA', horizon: '#EFE9E1',
       metro:      '#333333',
       text:       '#55524F',
       textLot:    '#5C5650',
@@ -57,6 +61,7 @@
       textPark:   '#3F5726',
       textSchool: '#776628',
       textHosp:   '#1F5FAD',
+      textLib:    '#7A4A1E',
       airport:    '#C5C5B9', textAir: '#4B4868',
       textFire:   '#B02525',
       halo:       'rgba(255,255,255,0.95)',
@@ -92,6 +97,8 @@
       rail:       '#5C5751',
       building:   '#2C3034',
       buildingLine: '#3A3F44',
+      building3d: '#3A4046',
+      sky:        '#111519', horizon: '#2B3036',
       metro:      '#B8BEC5',
       text:       '#D2D6DA',
       textLot:    '#B4BAC0',
@@ -99,6 +106,7 @@
       textPark:   '#A6C487',
       textSchool: '#CBB977',
       textHosp:   '#8DB8F0',
+      textLib:    '#D9B48A',
       airport:    '#34362F', textAir: '#B7B3D6',
       textFire:   '#F08C8C',
       halo:       'rgba(22,25,28,0.92)',
@@ -364,10 +372,16 @@
     return {
       version: 8,
       glyphs: GLYPHS,
+      ...(is3D ? { terrain: { source: 'terrain3d', exaggeration: EXAGGERATE } } : {}),
+      // light for 3D buildings comes from the northwest, like the hillshade
+      light: { anchor: 'map', position: [1.3, 315, 40], color: '#FFFFFF', intensity: theme === 'dark' ? 0.25 : 0.35 },
+      sky: { 'sky-color': c.sky, 'horizon-color': c.horizon, 'fog-color': c.background,
+             'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85, 'atmosphere-blend': 0 },
       sources: {
         base:      { type: 'vector', url: 'pmtiles://' + TILES.base },
         buildings: { type: 'vector', url: 'pmtiles://' + TILES.buildings },
         lots:      { type: 'vector', url: 'pmtiles://' + TILES.lots },
+        terrain3d: { type: 'raster-dem', tiles: [TERRAIN], tileSize: 256, maxzoom: 15, encoding: 'terrarium' },   // separate copy for 3D hills (sharing one with the hillshade blurs it)
         terrain:   { type: 'raster-dem', tiles: [TERRAIN], tileSize: 256, maxzoom: 15, encoding: 'terrarium',
                      attribution: 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>' },
         ...overlaySources(),
@@ -375,6 +389,7 @@
         fire:      { type: 'geojson', data: 'data/fireStations.geojson' },
         airports:  { type: 'geojson', data: 'data/airports.geojson' },
         shields:   { type: 'geojson', data: 'data/shields.geojson' },
+        libraries: { type: 'geojson', data: 'data/libraries.geojson' },
         'airport-pts': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       },
       layers: [
@@ -457,10 +472,21 @@
 
         /* Buildings (zoomed in only) */
         { id: 'buildings', type: 'fill', source: 'buildings', 'source-layer': 'buildings', minzoom: ZOOM.buildings,
+          layout: { visibility: is3D ? 'none' : 'visible' },
           paint: {
             'fill-color': c.building,
             'fill-outline-color': c.buildingLine,
             'fill-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, 1],
+          } },
+        /* 3D buildings (3D view only): rise from the ground as they fade in. h = height in meters */
+        { id: 'buildings-3d', type: 'fill-extrusion', source: 'buildings', 'source-layer': 'buildings', minzoom: ZOOM.buildings,
+          layout: { visibility: is3D ? 'visible' : 'none' },
+          paint: {
+            'fill-extrusion-color': c.building3d,
+            'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, ['coalesce', ['get', 'h'], 4]],
+            'fill-extrusion-base': 0,
+            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, 0.94],
+            'fill-extrusion-vertical-gradient': true,
           } },
 
         /* Metro boundary */
@@ -537,7 +563,7 @@
           },
           paint: { 'text-color': c.textPark, ...halo(1.4) } },
 
-        /* Hospitals and fire stations (basemap symbols, not clickable) */
+        /* Hospitals, fire stations, libraries, airports (basemap symbols; a tap opens a small card) */
         { id: 'hospitals', type: 'symbol', source: 'hospitals', minzoom: 12,
           layout: {
             'icon-image': 'sym-hospital', 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.7, 16, 1],
@@ -556,6 +582,15 @@
             'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-optional': true,
           },
           paint: { 'text-color': c.textFire, ...halo(1.6) } },
+        { id: 'libraries', type: 'symbol', source: 'libraries', minzoom: 13,
+          layout: {
+            'icon-image': 'sym-library', 'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.7, 17, 0.95],
+            'symbol-sort-key': 1,
+            'text-field': ['step', ['zoom'], '', 14, ['get', 'NAME']], 'text-font': FONT.semibold,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 14, 10.5, 18, 12],
+            'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-max-width': 8, 'text-optional': true,
+          },
+          paint: { 'text-color': c.textLib, ...halo(1.6) } },
         { id: 'airport-icons', type: 'symbol', source: 'airport-pts', minzoom: 12,
           layout: {
             'icon-image': 'sym-airport', 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.7, 16, 1],
@@ -606,8 +641,9 @@
     maxZoom: ZOOM.max,
     maxBounds: BOUNDS,
     attributionControl: false,
-    pitchWithRotate: false,
-    touchPitch: false,
+    pitchWithRotate: true,        // tilting is only allowed in 3D (maxPitch is 0 otherwise)
+    touchPitch: true,
+    maxPitch: 0,
     fadeDuration: 150,
   });
   window.explorerMap = map;       // handy for debugging in the browser console
@@ -785,6 +821,14 @@
     if (kind === 'sym-hospital') {          // US standard: white H on blue
       box('#1F5FAD'); g.fillStyle = '#FFFFFF';
       g.fillRect(14, 12, 6, 24); g.fillRect(28, 12, 6, 24); g.fillRect(14, 21, 20, 6);
+    } else if (kind === 'sym-library') {    // library: white open book on brown
+      box('#8A5A2B'); g.fillStyle = '#FFFFFF';
+      const page = (dir) => {
+        g.beginPath(); g.moveTo(24, 17); g.quadraticCurveTo(24 + dir * 6, 13, 24 + dir * 12, 14);
+        g.lineTo(24 + dir * 12, 33); g.quadraticCurveTo(24 + dir * 6, 32, 24, 36); g.closePath(); g.fill();
+      };
+      page(-1); page(1);
+      g.fillStyle = '#8A5A2B'; g.fillRect(23.2, 16, 1.6, 20);   // spine gap
     } else if (kind === 'sym-airport') {    // airport: white plane on slate purple
       box('#5B5781'); g.fillStyle = '#FFFFFF';
       const c = S / 2; g.save(); g.translate(c, c); g.rotate(-Math.PI / 4);
@@ -861,7 +905,7 @@
     if (sh && !map.hasImage(e.id)) { map.addImage(e.id, drawShield(sh[1], sh[2]), { pixelRatio: 2 }); return; }
     const m = /^pt-(\w+)-(light|dark)(-v)?(-p)?$/.exec(e.id);
     if (m && GLYPH[m[1]] && !map.hasImage(e.id)) { const cv = drawPoint(m[1], m[2], !!m[4], !!m[3]); map.addImage(e.id, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height), { pixelRatio: 2 }); return; }
-    if ((e.id === 'sym-hospital' || e.id === 'sym-fire' || e.id === 'sym-airport') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
+    if ((e.id === 'sym-hospital' || e.id === 'sym-fire' || e.id === 'sym-airport' || e.id === 'sym-library') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
     if (e.id === 'prio-badge' && !map.hasImage(e.id)) {   // flag badge for priority clusters
       const S = 30, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), c0 = S / 2;
       g.save(); g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
@@ -1319,6 +1363,7 @@
     const sets = [
       ['Grocery store', 'data/groceryStores.geojson', (q) => q.Name, (q) => [q.Address, q.City, q.State].filter(Boolean).join(', ')],
       ['School', 'data/schools.geojson', (q) => q.Label_Name, (q) => [q.ADDRESS, q.CITY, q.STATE].filter(Boolean).join(', ')],
+      ['Library', 'data/libraries.geojson', (q) => q.NAME, (q) => [q.ADDRESS, q.CITY, q.STATE].filter(Boolean).join(', ')],
       ['Hospital', 'data/hospitals.geojson', (q) => q.NAME, (q) => [q.ADDRESS, q.CITY, 'OR'].filter(Boolean).join(', ')],
       ['Fire station', 'data/fireStations.geojson', (q) => title(q.DISTRICT || 'Fire station'), (q) => [q.ADDRESS, q.CITY, q.STATE].filter(Boolean).join(', ')],
     ];
@@ -1590,6 +1635,48 @@
     openSheet(html, { noFull: key !== 'pSchools' }); sheetBody.onclick = null;
     revealPoint(ll);
   }
+  // Basemap symbols: name, address and directions
+  const SYMBOL_LAYERS = ['hospitals', 'fire-stations', 'libraries', 'airport-icons'];
+  function openSymbol(f) {
+    openToken++; clearSelection();
+    const p = f.properties, ll = f.geometry.coordinates, where = (a, c) => [a, c].filter(Boolean).join(', ');
+    const html = f.layer.id === 'fire-stations' ? placeCard('Fire station', [title(p.DISTRICT || ''), title(where(p.ADDRESS, p.CITY)).replace(/\b(Ne|Nw|Se|Sw)\b/g, (d) => d.toUpperCase())].filter(Boolean).join(' · '), ll)
+      : f.layer.id === 'airport-icons' ? placeCard(p.NAME, 'Airport', ll)
+      : placeCard(p.NAME, where(p.ADDRESS, p.CITY), ll);
+    openSheet(html, { noFull: true }); sheetBody.onclick = null;
+    revealPoint(ll);
+  }
+  /* In 3D the map's own hit test for icons is off by the height of the hills, so taps miss them and land on the lot.
+     There, find icons by placing each one on screen ourselves (map.project knows the terrain) and taking the closest. */
+  function nearest3D(pt, sets) {
+    let best = null, bd = Infinity;
+    for (const { source, layerId, radius } of sets) {
+      const seen = new Set();
+      for (const f of map.querySourceFeatures(source)) {
+        if (f.geometry?.type !== 'Point') continue;
+        const k = f.properties.cluster_id != null ? 'c' + f.properties.cluster_id : f.id ?? JSON.stringify(f.geometry.coordinates);
+        if (seen.has(k)) continue; seen.add(k);
+        const q = map.project(f.geometry.coordinates), d = Math.hypot(q.x - pt.x, q.y - pt.y);
+        const r = typeof radius === 'function' ? radius(f) : radius;
+        if (d <= r && d < bd) { bd = d; best = { id: f.id, properties: f.properties, geometry: f.geometry, layer: { id: typeof layerId === 'function' ? layerId(f) : layerId } }; }
+      }
+    }
+    return best ? [best] : [];
+  }
+  const SYMBOL_SOURCE = { hospitals: 'hospitals', 'fire-stations': 'fire', libraries: 'libraries', 'airport-icons': 'airport-pts' };
+  const symbolsAt = (pt) => {
+    const ids = SYMBOL_LAYERS.filter((id) => map.getLayer(id) && map.getZoom() >= (map.getLayer(id).minzoom || 0));
+    if (!is3D) return map.queryRenderedFeatures(pt, { layers: ids });
+    return nearest3D(pt, ids.map((id) => ({ source: SYMBOL_SOURCE[id], layerId: id, radius: 16 })));
+  };
+  // saved homes, explore/observation pins, schools, grocery, restaurants (and their clusters)
+  const placesAt = (pt) => {
+    const ids = visibleLayers(['-cluster', '-dot'], 'places');
+    if (!is3D) return map.queryRenderedFeatures(pt, { layers: ids });
+    const keys = [...new Set(ids.filter((id) => id.endsWith('-dot')).map((id) => id.slice(0, -4)))];
+    return nearest3D(pt, keys.map((key) => ({ source: 'ov-' + key,
+      layerId: (f) => key + (f.properties.cluster ? '-cluster' : '-dot'), radius: (f) => (f.properties.cluster ? 24 : 18) })));
+  };
   async function openArea(key, f, ll) {
     openToken++;
     select('area', key, f.id);
@@ -1620,8 +1707,11 @@
   map.on('click', async (e) => {
     if (performance.now() - pressedAt < 700) { dismissTap = false; return; }   // this tap ended a press-and-hold (new Explore pin)
     if (dismissTap) { dismissTap = false; if (!sheetLock) closeSheet(); return; }
+    try { await mapClick(e); } catch (err) { console.warn(err); if (!sheetLock) closeSheet(); }   // never leave a stale card on a failed tap
+  });
+  async function mapClick(e) {
     // 1) places: clusters zoom in, dots open a card
-    const pts = map.queryRenderedFeatures(e.point, { layers: visibleLayers(['-cluster', '-dot'], 'places') });
+    const pts = placesAt(e.point);
     if (pts.length) {
       const f = pts[0], key = f.layer.id.replace(/-(cluster|dot)$/, '');
       if (f.layer.id.endsWith('-cluster')) {
@@ -1630,21 +1720,34 @@
       } else openPlace(key, f);
       return;
     }
+    // 1b) hospitals, fire stations, libraries, airports beat lots and areas
+    const syms = symbolsAt(e.point);
+    if (syms.length) { openSymbol(syms[0]); return; }
     const ll = [e.lngLat.lng, e.lngLat.lat];
     const areas = map.queryRenderedFeatures(e.point, { layers: visibleLayers(['-fill'], 'bounds') });
-    const lots = map.getLayer('lots-hit') && map.getZoom() >= 15 ? map.queryRenderedFeatures(e.point, { layers: ['lots-hit'] }) : [];
+    let lotPt = e.point;
+    // In 3D a tap on a building's wall or roof means that building's lot (not the ground showing behind it)
+    if (is3D && map.getLayer('buildings-3d') && map.getZoom() >= ZOOM.buildings) {
+      const b = map.queryRenderedFeatures(e.point, { layers: ['buildings-3d'] })[0];
+      const ring = b && (b.geometry.type === 'Polygon' ? b.geometry.coordinates[0] : b.geometry.type === 'MultiPolygon' ? b.geometry.coordinates[0][0] : null);
+      if (ring?.length) {
+        const c = ring.reduce((a, [x, y]) => [a[0] + x / ring.length, a[1] + y / ring.length], [0, 0]);
+        lotPt = map.project(c); ll.splice(0, 2, c[0], c[1]);
+      }
+    }
+    const lots = map.getLayer('lots-hit') && map.getZoom() >= 15 ? map.queryRenderedFeatures(lotPt, { layers: ['lots-hit'] }) : [];
     // 2) at street zoom a lot wins (unless a boundary layer is on and you're zoomed out a bit)
     if (lots.length && !(areas.length && map.getZoom() < 16)) { openLot(lots[0], ll); return; }
     // 3) boundary areas
     if (areas.length) { const f = areas[0]; openArea(f.layer.id.replace(/-fill$/, ''), f, ll); return; }
     // 4) empty map
     if (!sheetLock) closeSheet();
-  });
+  }
   map.on('dragstart', () => { if (!sheetLock) closeSheet(); });
   map.on('mousemove', (e) => {
-    const ids = [...visibleLayers(['-cluster', '-dot'], 'places'), ...visibleLayers(['-fill'], 'bounds')];
+    const ids = visibleLayers(['-fill'], 'bounds');
     if (map.getZoom() >= 15 && map.getLayer('lots-hit')) ids.push('lots-hit');
-    map.getCanvas().style.cursor = ids.length && map.queryRenderedFeatures(e.point, { layers: ids }).length ? 'pointer' : '';
+    map.getCanvas().style.cursor = placesAt(e.point).length || symbolsAt(e.point).length || (ids.length && map.queryRenderedFeatures(e.point, { layers: ids }).length) ? 'pointer' : '';
   });
 
   /* ---------- Search ----------
@@ -1925,6 +2028,38 @@
     onRemove() {}
   }
   if (!EMBED) map.addControl(new PinControl(), 'top-right');
+
+  /* ---------- 3D view ----------
+     Tilts the map, raises the hills (terrain) and swaps flat buildings for 3D ones (heights from tools/prep.py).
+     Flat is the default; in flat mode tilting is locked (maxPitch 0). */
+  let btn3d = null;
+  function set3D(on) {
+    is3D = on;
+    btn3d?.classList.toggle('on', on); btn3d?.setAttribute('aria-pressed', on);
+    if (map.getLayer('buildings')) map.setLayoutProperty('buildings', 'visibility', on ? 'none' : 'visible');
+    if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', on ? 'visible' : 'none');
+    if (on) {
+      map.setMaxPitch(72);
+      map.setTerrain({ source: 'terrain3d', exaggeration: EXAGGERATE });
+      map.easeTo({ pitch: 58, bearing: map.getBearing() || -12, duration: 1100 });
+    } else {
+      map.setTerrain(null);
+      map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
+      map.once('moveend', () => { if (!is3D) map.setMaxPitch(0); });
+    }
+  }
+  class View3DControl {
+    onAdd() {
+      const wrap = document.createElement('div');
+      wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group view3d-ctrl';
+      wrap.innerHTML = '<button type="button" aria-label="3D view" aria-pressed="false"><span>3D</span></button>';
+      btn3d = wrap.querySelector('button');
+      btn3d.onclick = () => set3D(!is3D);
+      return wrap;
+    }
+    onRemove() {}
+  }
+  if (!EMBED) map.addControl(new View3DControl(), 'top-right');
   // Press and hold (phones) / right-click (computers): save a place to explore
   let pressedAt = -1e9, holdTimer = 0, holdStart = null;
   const cancelHold = () => { clearTimeout(holdTimer); holdStart = null; };

@@ -57,8 +57,22 @@ def write(name,src,fn):
             if tip: o['tippecanoe']=tip
             g.write(json.dumps(o,separators=(',',':'))+'\n'); n+=1
     print(name,n,round(time.time()-t),'s',flush=True)
+HEIGHTS=None
 def bld(p):
+    # h = height in meters for 3D (from _build/heights.csv.gz: OBJECTID1,meters; built from building_info.csv AVG_HEIGHT)
+    global HEIGHTS
+    if HEIGHTS is None:
+        HEIGHTS={}
+        hp=O+'heights.csv.gz'
+        if os.path.exists(hp):
+            for ln in gzip.open(hp,'rt'):
+                i,h=ln.split(','); HEIGHTS[int(i)]=float(h)
     o={}
+    h=HEIGHTS.get(p.get('OBJECTID1'))
+    if not h:   # no measured height: small default (sheds/garages lower)
+        small=p.get('BLDG_TYPE') in('Garage','Misc','Shed','Carport') or (p.get('SHAPE_Area') or 999)<200
+        h=3.0 if small else 4.3
+    o['h']=h
     for k,kk in(('BLDG_ADDR','addr'),('BLDG_TYPE','type'),('BLDG_USE','use'),('BLDG_SQFT','sqft'),('YEAR_BUILT','year')):
         v=p.get(k)
         if v in(None,'',' ',0,'Unknown'): continue
