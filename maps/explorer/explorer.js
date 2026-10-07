@@ -1719,9 +1719,9 @@
   function pinCard(r) {
     const key = PIN_KEY[r.kind], color = PALETTE[themeNow()][key === 'pObs' ? 'pObs' : 'pExplore'], photos = r.photos || [];
     const who = [r.created_by_name, r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null].filter(Boolean).join(' · ');
-    return `<div class="sec"><span class="kind-tag" style="--kc:${color}">${KIND_LABEL[r.kind]}</span><h2 class="pin-title">${esc(pinTitle(r))}</h2>${who ? `<div class="sub">${esc(who)}</div>` : ''}</div>
+    return `<div class="sec"><span class="kind-tag" style="--kc:${color}">${KIND_LABEL[r.kind]}</span><h2 class="pin-title">${r.title ? esc(r.title) : KIND_LABEL[r.kind]}</h2>${who ? `<div class="sub">${esc(who)}</div>` : ''}</div>
       ${photos.length ? `<div class="sec"><div class="photowrap"><div class="photos">${photos.map((u) => `<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${photos.length > 1 ? '<button type="button" class="parrow prev" aria-label="Previous photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg></button><button type="button" class="parrow next" aria-label="Next photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>' : ''}</div></div>` : ''}
-      ${r.note && r.title ? `<div class="sec"><div class="pin-note">${esc(r.note)}</div></div>` : ''}
+      ${r.note ? `<div class="sec"><div class="pin-note">${esc(r.note)}</div></div>` : ''}
       ${r.link ? `<div class="sec"><a class="go" target="_blank" rel="noopener" href="${esc(r.link)}">Open link</a></div>` : ''}
       <div class="foot"><div class="pills two">${dirs([r.lng, r.lat])}${r.kind === 'explore' ? '<button type="button" class="btn alt" data-act="visited">Mark visited</button>' : r.visited ? '<button type="button" class="btn ghost-btn" data-act="unvisit">Mark unvisited</button>' : ''}</div>
       <div class="acts"><button data-act="edit">Edit</button><button data-act="del" class="danger">Delete</button></div></div>`;

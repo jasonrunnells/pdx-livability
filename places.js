@@ -202,8 +202,8 @@ function card(r) {
       ${r.kind === 'observation' && r.visited ? `<span class="visited">${ic('check')}From Explore</span>` : ''}
       ${(r.photos || []).length > 1 ? `<span class="hd-pcount">${r.photos.length}</span>` : ''}</div>
     <div class="hd-body">
-      <div class="pl-title">${esc(titleOf(r))}</div>
-      ${r.note && r.title ? `<div class="pl-note">${esc(r.note)}</div>` : ''}
+      <div class="pl-title">${r.title ? esc(r.title) : (r.kind === 'explore' ? 'Explore' : 'Observation')}</div>
+      ${r.note ? `<div class="pl-note">${esc(r.note)}</div>` : ''}
       <div class="hd-place">${[x?.hood ? `<span class="nb-hood">${esc(x.hood)}</span>` : '', x?.city ? `<span class="nb-city">${esc(x.city)}</span>` : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
       <div class="pl-who">${esc([r.created_by_name, when].filter(Boolean).join(' · '))}</div>
     </div>

@@ -1096,3 +1096,5 @@ html.embed:not(.wide) #map { opacity: 0; }
 .lp-item .layers-switch:checked::after { transform: translateX(14px); }
 
 .sheet .btn.ghost-btn { background: var(--bg2) !important; color: var(--ink) !important; }
+
+.sheet .pin-title.none { color: var(--ink-soft); font-weight: 600; font-style: italic; }
