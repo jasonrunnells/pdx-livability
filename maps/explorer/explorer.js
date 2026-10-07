@@ -156,6 +156,19 @@
   const caseWidth   = zoomed(true);
   const streetRank = ['match', ['get', 'class'], ...Object.entries(RANK).flat(), 0];
 
+  /* ---------- OpenStreetMap places (data/osm_places.geojson, built by tools/osm.py) ----------
+     kind: [label, badge color, label text light, label text dark] */
+  const OSM_KINDS = {
+    veterinary:     ['Veterinarian',   '#0E8A7E', '#0B6F65', '#6FD3C6'],
+    dog_park:       ['Dog park',       '#4E8F3A', '#3F6B2C', '#9CCB7F'],
+    cinema:         ['Cinema',         '#6D4BC1', '#5A3DA6', '#B9A3F0'],
+    fitness_centre: ['Gym',            '#D06A1E', '#A9551A', '#F0A868'],
+    prison:         ['Jail / prison',  '#55595E', '#4A4E52', '#B6BBC0'],
+    theme_park:     ['Amusement park', '#C23F7C', '#A33468', '#F09BC2'],
+    zoo:            ['Zoo',            '#8A6D1F', '#6E5717', '#E0C27A'],
+  };
+  const osmText = (dark) => ['match', ['get', 'kind'], ...Object.entries(OSM_KINDS).flatMap(([k, v]) => [k, v[dark ? 3 : 2]]), '#55524F'];
+
   /* ---------- Highway shields (points from data/shields.geojson, built by tools/shields.py) ---------- */
   // Each route has evenly spaced points in tiers (16, 8, 4, 2, 1 km apart); more tiers show as you zoom in.
   const shieldLayer = (id, major, minzoom) => ({
@@ -390,6 +403,7 @@
         airports:  { type: 'geojson', data: 'data/airports.geojson' },
         shields:   { type: 'geojson', data: 'data/shields.geojson' },
         libraries: { type: 'geojson', data: 'data/libraries.geojson' },
+        osm:       { type: 'geojson', data: 'data/osm_places.geojson' },
         'airport-pts': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       },
       layers: [
@@ -505,7 +519,6 @@
 
         /* Boundary overlays */
         ...ov.lines,
-        ...ov.points,
 
         /* ---------- Labels ---------- */
         { id: 'label-lots', type: 'symbol', source: 'lots', 'source-layer': 'lotlabels', minzoom: 17,
@@ -591,6 +604,17 @@
             'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-max-width': 8, 'text-optional': true,
           },
           paint: { 'text-color': c.textLib, ...halo(1.6) } },
+        /* OpenStreetMap places: big ones (cinemas, zoo, amusement parks, jails) from zoom 12, the rest from 13 */
+        { id: 'osm-places', type: 'symbol', source: 'osm', minzoom: 12,
+          filter: ['step', ['zoom'], ['in', ['get', 'kind'], ['literal', ['cinema', 'zoo', 'theme_park', 'prison']]], 13, true],
+          layout: {
+            'icon-image': ['concat', 'sym-osm-', ['get', 'kind']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.62, 17, 0.9],
+            'symbol-sort-key': 2,
+            'text-field': ['step', ['zoom'], '', 14, ['get', 'name']], 'text-font': FONT.semibold,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 14, 10.5, 18, 12],
+            'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-max-width': 8, 'text-optional': true,
+          },
+          paint: { 'text-color': osmText(theme === 'dark'), ...halo(1.6) } },
         { id: 'airport-icons', type: 'symbol', source: 'airport-pts', minzoom: 12,
           layout: {
             'icon-image': 'sym-airport', 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.7, 16, 1],
@@ -601,6 +625,8 @@
           },
           paint: { 'text-color': c.textAir, ...halo(1.6) } },
 
+        /* Places from the layers panel draw above every basemap icon */
+        ...ov.points,
         ...ov.labels,
 
         { id: 'label-cities', type: 'symbol', source: 'base', 'source-layer': 'labels', maxzoom: 13,
@@ -680,7 +706,7 @@
   map.addControl(new maplibregl.ScaleControl({ unit: 'imperial', maxWidth: 90 }), 'bottom-left');
   map.addControl(new maplibregl.AttributionControl({
     compact: true,
-    customAttribution: 'Data: Oregon Metro RLIS',
+    customAttribution: 'Data: Oregon Metro RLIS · © OpenStreetMap contributors',
   }), 'bottom-right');
   // Keep the credits folded into the small "i" button.
   const foldCredits = () => document.querySelectorAll('.maplibregl-ctrl-attrib').forEach((el) => { el.classList.remove('maplibregl-compact-show'); el.removeAttribute('open'); });
@@ -764,7 +790,19 @@
       else src.setData(o.file);
     }
     for (const id of overlayIds(key)) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    softenBasemap();
   }
+  // While any Places layer is on, basemap icons (hospitals, libraries, OSM places…) fade back so your places stand out.
+  const BASEMAP_ICONS = ['hospitals', 'fire-stations', 'libraries', 'osm-places', 'airport-icons'];
+  function softenBasemap() {
+    const soft = OVERLAYS.some((o) => o.group === 'places' && overlayOn[o.key]);
+    for (const id of BASEMAP_ICONS) {
+      if (!map.getLayer(id)) continue;
+      map.setPaintProperty(id, 'icon-opacity', soft ? 0.4 : 1);
+      map.setPaintProperty(id, 'text-opacity', soft ? 0.5 : 1);
+    }
+  }
+  map.on('style.load', softenBasemap);
 
   class LayersControl {
     onAdd() {
@@ -821,6 +859,29 @@
     if (kind === 'sym-hospital') {          // US standard: white H on blue
       box('#1F5FAD'); g.fillStyle = '#FFFFFF';
       g.fillRect(14, 12, 6, 24); g.fillRect(28, 12, 6, 24); g.fillRect(14, 21, 20, 6);
+    } else if (kind.startsWith('sym-osm-')) {   // OpenStreetMap places: white glyph on the kind's color
+      const k = kind.slice(8); box(OSM_KINDS[k]?.[1] || '#666666'); g.fillStyle = g.strokeStyle = '#FFFFFF';
+      const dot = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+      if (k === 'veterinary') { g.beginPath(); g.roundRect(20, 12, 8, 24, 2); g.roundRect(12, 20, 24, 8, 2); g.fill(); }
+      else if (k === 'dog_park') {          // bone
+        g.save(); g.translate(24, 24); g.rotate(-Math.PI / 4);
+        g.fillRect(-9, -3, 18, 6); dot(-10, -4, 4.4); dot(-10, 4, 4.4); dot(10, -4, 4.4); dot(10, 4, 4.4); g.restore();
+      } else if (k === 'cinema') {          // screen with a play mark
+        g.lineWidth = 3; g.beginPath(); g.roundRect(11.5, 14.5, 25, 19, 3); g.stroke();
+        g.beginPath(); g.moveTo(21, 19.5); g.lineTo(21, 28.5); g.lineTo(29, 24); g.closePath(); g.fill();
+      } else if (k === 'fitness_centre') {  // dumbbell
+        g.fillRect(14, 22.5, 20, 3); g.beginPath(); g.roundRect(9, 15, 5.5, 18, 1.5); g.roundRect(33.5, 15, 5.5, 18, 1.5); g.fill();
+        g.fillRect(14.5, 18.5, 3, 11); g.fillRect(30.5, 18.5, 3, 11);
+      } else if (k === 'prison') {          // barred window
+        g.lineWidth = 3; g.strokeRect(13.5, 13.5, 21, 21); g.fillRect(19.5, 13.5, 3, 21); g.fillRect(25.5, 13.5, 3, 21);
+      } else if (k === 'theme_park') {      // ferris wheel
+        g.lineWidth = 2.5; g.beginPath(); g.arc(24, 21, 9.5, 0, Math.PI * 2); g.stroke();
+        g.lineWidth = 1.8; for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4; g.beginPath(); g.moveTo(24 - 9.5 * Math.cos(a), 21 - 9.5 * Math.sin(a)); g.lineTo(24 + 9.5 * Math.cos(a), 21 + 9.5 * Math.sin(a)); g.stroke(); }
+        g.lineWidth = 2.5; g.beginPath(); g.moveTo(24, 21); g.lineTo(16.5, 37); g.moveTo(24, 21); g.lineTo(31.5, 37); g.stroke();
+      } else {                              // zoo: paw print
+        g.beginPath(); g.ellipse(24, 29.5, 7.5, 6.2, 0, 0, Math.PI * 2); g.fill();
+        dot(14.8, 21.5, 3.3); dot(20.5, 15.8, 3.3); dot(27.5, 15.8, 3.3); dot(33.2, 21.5, 3.3);
+      }
     } else if (kind === 'sym-library') {    // library: white open book on brown
       box('#8A5A2B'); g.fillStyle = '#FFFFFF';
       const page = (dir) => {
@@ -905,7 +966,7 @@
     if (sh && !map.hasImage(e.id)) { map.addImage(e.id, drawShield(sh[1], sh[2]), { pixelRatio: 2 }); return; }
     const m = /^pt-(\w+)-(light|dark)(-v)?(-p)?$/.exec(e.id);
     if (m && GLYPH[m[1]] && !map.hasImage(e.id)) { const cv = drawPoint(m[1], m[2], !!m[4], !!m[3]); map.addImage(e.id, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height), { pixelRatio: 2 }); return; }
-    if ((e.id === 'sym-hospital' || e.id === 'sym-fire' || e.id === 'sym-airport' || e.id === 'sym-library') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
+    if (e.id.startsWith('sym-') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
     if (e.id === 'prio-badge' && !map.hasImage(e.id)) {   // flag badge for priority clusters
       const S = 30, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), c0 = S / 2;
       g.save(); g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
@@ -1366,11 +1427,14 @@
       ['Library', 'data/libraries.geojson', (q) => q.NAME, (q) => [q.ADDRESS, q.CITY, q.STATE].filter(Boolean).join(', ')],
       ['Hospital', 'data/hospitals.geojson', (q) => q.NAME, (q) => [q.ADDRESS, q.CITY, 'OR'].filter(Boolean).join(', ')],
       ['Fire station', 'data/fireStations.geojson', (q) => title(q.DISTRICT || 'Fire station'), (q) => [q.ADDRESS, q.CITY, q.STATE].filter(Boolean).join(', ')],
+      ['Vet', 'data/osm_places.geojson', (q) => q.name, () => '', (q) => q.kind === 'veterinary'],
+      ['Dog park', 'data/osm_places.geojson', (q) => q.name, () => '', (q) => q.kind === 'dog_park'],
+      ['Cinema', 'data/osm_places.geojson', (q) => q.name, () => '', (q) => q.kind === 'cinema'],
     ];
-    const rows = await Promise.all(sets.map(async ([label, file, nameOf, addrOf]) => {
+    const rows = await Promise.all(sets.map(async ([label, file, nameOf, addrOf, keep]) => {
       const fc = await getJSON(file).catch(() => null); if (!fc) return null;
       let best = null, bd = Infinity;
-      for (const f of fc.features) { if (!f.geometry) continue; const d = miles([lng, lat], f.geometry.coordinates); if (d < bd) { bd = d; best = f; } }
+      for (const f of fc.features) { if (!f.geometry || (keep && !keep(f.properties))) continue; const d = miles([lng, lat], f.geometry.coordinates); if (d < bd) { bd = d; best = f; } }
       if (!best) return null;
       const q = best.properties, [x, y] = best.geometry.coordinates, addr = addrOf(q);
       const dest = addr ? encodeURIComponent(addr) : `${y},${x}`;
@@ -1665,12 +1729,13 @@
     revealPoint(ll);
   }
   // Basemap symbols: name, address and directions
-  const SYMBOL_LAYERS = ['hospitals', 'fire-stations', 'libraries', 'airport-icons'];
+  const SYMBOL_LAYERS = ['hospitals', 'fire-stations', 'libraries', 'osm-places', 'airport-icons'];
   function openSymbol(f) {
     openToken++; clearSelection();
     const p = f.properties, ll = f.geometry.coordinates, where = (a, c) => [a, c].filter(Boolean).join(', ');
     const html = f.layer.id === 'fire-stations' ? placeCard('Fire station', [title(p.DISTRICT || ''), title(where(p.ADDRESS, p.CITY)).replace(/\b(Ne|Nw|Se|Sw)\b/g, (d) => d.toUpperCase())].filter(Boolean).join(' · '), ll)
       : f.layer.id === 'airport-icons' ? placeCard(p.NAME, 'Airport', ll)
+      : f.layer.id === 'osm-places' ? placeCard(p.name || OSM_KINDS[p.kind]?.[0] || 'Place', OSM_KINDS[p.kind]?.[0] || '', ll)
       : placeCard(p.NAME, where(p.ADDRESS, p.CITY), ll);
     openSheet(html, { noFull: true }); sheetBody.onclick = null;
     revealPoint(ll);
@@ -1692,11 +1757,12 @@
     }
     return best ? [best] : [];
   }
-  const SYMBOL_SOURCE = { hospitals: 'hospitals', 'fire-stations': 'fire', libraries: 'libraries', 'airport-icons': 'airport-pts' };
+  const SYMBOL_SOURCE = { hospitals: 'hospitals', 'fire-stations': 'fire', libraries: 'libraries', 'osm-places': 'osm', 'airport-icons': 'airport-pts' };
   const symbolsAt = (pt) => {
     const ids = SYMBOL_LAYERS.filter((id) => map.getLayer(id) && map.getZoom() >= (map.getLayer(id).minzoom || 0));
     if (!is3D) return map.queryRenderedFeatures(pt, { layers: ids });
-    return nearest3D(pt, ids.map((id) => ({ source: SYMBOL_SOURCE[id], layerId: id, radius: 16 })));
+    const hits = nearest3D(pt, ids.map((id) => ({ source: SYMBOL_SOURCE[id], layerId: id, radius: 16 })));
+    return hits.filter((f) => !(f.layer.id === 'osm-places' && map.getZoom() < 13 && !['cinema', 'zoo', 'theme_park', 'prison'].includes(f.properties.kind)));
   };
   // saved homes, explore/observation pins, schools, grocery, restaurants (and their clusters)
   const placesAt = (pt) => {
@@ -1746,7 +1812,10 @@
       const f = pts[0], key = f.layer.id.replace(/-(cluster|dot)$/, '');
       if (f.layer.id.endsWith('-cluster')) {
         const zoom = await map.getSource('ov-' + key).getClusterExpansionZoom(f.properties.cluster_id);
-        map.easeTo({ center: f.geometry.coordinates, zoom: Math.min(zoom + 0.3, ZOOM.max) });
+        // In 3D the far part of the view is drawn from lower-zoom data, so a distant cluster's split zoom can be below
+        // the current zoom (the map would zoom OUT). Bring it close and zoom in at least a step so it always opens up.
+        const target = is3D ? Math.max(zoom + 0.3, map.getZoom() + 1) : zoom + 0.3;
+        map.easeTo({ center: f.geometry.coordinates, zoom: Math.min(target, ZOOM.max) });
       } else openPlace(key, f);
       return;
     }
