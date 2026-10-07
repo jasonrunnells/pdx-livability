@@ -198,7 +198,7 @@ function card(r) {
   const x = info.get(r.id), photo = (r.photos || [])[0], col = COLOR[r.kind];
   const when = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
   return `<button type="button" class="hd-card pl-card${r.id === openId ? ' on' : ''}" data-id="${esc(r.id)}" style="--dot:${col}">
-    <div class="hd-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph solid">${ic(r.kind)}</div>`}
+    <div class="hd-img">${photo ? `${PDXThumb.img(photoSrc(photo), esc)}` : `<div class="ph solid">${ic(r.kind)}</div>`}
       ${r.kind === 'observation' && r.visited ? `<span class="visited">${ic('check')}From Explore</span>` : ''}
       ${(r.photos || []).length > 1 ? `<span class="hd-pcount">${r.photos.length}</span>` : ''}</div>
     <div class="hd-body">

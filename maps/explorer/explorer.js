@@ -57,6 +57,7 @@
       textPark:   '#3F5726',
       textSchool: '#776628',
       textHosp:   '#1F5FAD',
+      airport:    '#C5C5B9', textAir: '#4B4868',
       textFire:   '#B02525',
       halo:       'rgba(255,255,255,0.95)',
       sel:        '#2563EB',   // selected lot outline
@@ -98,6 +99,7 @@
       textPark:   '#A6C487',
       textSchool: '#CBB977',
       textHosp:   '#8DB8F0',
+      airport:    '#34362F', textAir: '#B7B3D6',
       textFire:   '#F08C8C',
       halo:       'rgba(22,25,28,0.92)',
       sel:        '#60A5FA',
@@ -145,6 +147,21 @@
   const streetWidth = zoomed(false);
   const caseWidth   = zoomed(true);
   const streetRank = ['match', ['get', 'class'], ...Object.entries(RANK).flat(), 0];
+
+  /* ---------- Highway shields (points from data/shields.geojson, built by tools/shields.py) ---------- */
+  // Each route has evenly spaced points in tiers (16, 8, 4, 2, 1 km apart); more tiers show as you zoom in.
+  const shieldLayer = (id, major, minzoom) => ({
+    id, type: 'symbol', source: 'shields', minzoom,
+    filter: ['all',
+      [major ? '!=' : '==', ['slice', ['get', 's'], 0, 3], 'or-'],
+      ['step', ['zoom'], ['==', ['get', 't'], 0], 12, ['<=', ['get', 't'], 1], 13, ['<=', ['get', 't'], 2], 14, ['<=', ['get', 't'], 3], 15, true]],
+    layout: {
+      'icon-image': ['concat', 'shield-', ['get', 's']],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], minzoom, 1, 15, 1.2],
+      'icon-padding': 6, 'symbol-sort-key': ['get', 't'],
+    },
+    paint: { 'icon-opacity': 0.9 },
+  });
 
   /* ---------- Shared data (Supabase) ---------- */
   // Same project and key as the home page; the sign-in made there carries over to the map.
@@ -356,6 +373,9 @@
         ...overlaySources(),
         hospitals: { type: 'geojson', data: 'data/hospitals.geojson' },
         fire:      { type: 'geojson', data: 'data/fireStations.geojson' },
+        airports:  { type: 'geojson', data: 'data/airports.geojson' },
+        shields:   { type: 'geojson', data: 'data/shields.geojson' },
+        'airport-pts': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       },
       layers: [
         { id: 'background', type: 'background', paint: { 'background-color': c.background } },
@@ -386,6 +406,8 @@
           } },
         /* Cemeteries sit above the hillshade so their guide color (#D5DCC2) shows true */
         { id: 'cemeteries', type: 'fill', source: 'base', 'source-layer': 'cemeteries', paint: { 'fill-color': c.cemeteries } },
+        /* Airports: flat gray-green grounds, no outline */
+        { id: 'airports', type: 'fill', source: 'airports', paint: { 'fill-color': c.airport } },
         { id: 'water',      type: 'fill', source: 'base', 'source-layer': 'water',      paint: { 'fill-color': c.water } },
         /* Thin darker shoreline, like PortlandMaps */
         { id: 'water-line', type: 'line', source: 'base', 'source-layer': 'water', minzoom: 10,
@@ -493,6 +515,10 @@
           },
           paint: { 'text-color': c.text, ...halo(1.2) } },
 
+        /* Highway shields: interstates and US routes first, Oregon routes when closer */
+        shieldLayer('shields-state', false, 11),
+        shieldLayer('shields-major', true, 9),
+
         { id: 'label-schools', type: 'symbol', source: 'base', 'source-layer': 'labels', minzoom: 15,
           filter: ['==', ['get', 'kind'], 'school'],
           layout: {
@@ -530,6 +556,15 @@
             'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-optional': true,
           },
           paint: { 'text-color': c.textFire, ...halo(1.6) } },
+        { id: 'airport-icons', type: 'symbol', source: 'airport-pts', minzoom: 12,
+          layout: {
+            'icon-image': 'sym-airport', 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.7, 16, 1],
+            'symbol-sort-key': 0,
+            'text-field': ['step', ['zoom'], '', 13, ['get', 'NAME']], 'text-font': FONT.semibold,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 13, 10.5, 17, 12.5],
+            'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-max-width': 9, 'text-optional': true,
+          },
+          paint: { 'text-color': c.textAir, ...halo(1.6) } },
 
         ...ov.labels,
 
@@ -750,6 +785,15 @@
     if (kind === 'sym-hospital') {          // US standard: white H on blue
       box('#1F5FAD'); g.fillStyle = '#FFFFFF';
       g.fillRect(14, 12, 6, 24); g.fillRect(28, 12, 6, 24); g.fillRect(14, 21, 20, 6);
+    } else if (kind === 'sym-airport') {    // airport: white plane on slate purple
+      box('#5B5781'); g.fillStyle = '#FFFFFF';
+      const c = S / 2; g.save(); g.translate(c, c); g.rotate(-Math.PI / 4);
+      g.beginPath(); g.roundRect(-2.6, -15, 5.2, 30, 2.6); g.fill();                         // body
+      g.beginPath(); g.moveTo(-2, -4); g.lineTo(-14, 3); g.lineTo(-14, 6); g.lineTo(-2, 3);
+      g.lineTo(2, 3); g.lineTo(14, 6); g.lineTo(14, 3); g.lineTo(2, -4); g.closePath(); g.fill();   // wings
+      g.beginPath(); g.moveTo(-1.5, 9); g.lineTo(-7, 13); g.lineTo(-7, 15); g.lineTo(0, 13.5);
+      g.lineTo(7, 15); g.lineTo(7, 13); g.lineTo(1.5, 9); g.closePath(); g.fill();          // tail
+      g.restore();
     } else {                                // fire station: red badge with a Maltese cross
       box('#C92A2A'); g.fillStyle = '#FFFFFF';
       const c = S / 2; g.save(); g.translate(c, c);
@@ -762,10 +806,62 @@
     }
     return g.getImageData(0, 0, S, S);
   }
+  /* One airport icon per airport, at the middle of its largest piece */
+  let airportPts = null;
+  async function loadAirportPts() {
+    if (!airportPts) {
+      const fc = await getJSON('data/airports.geojson').catch(() => null); if (!fc) return;
+      airportPts = { type: 'FeatureCollection', features: fc.features.filter(f => f.geometry).map(f => {
+        const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+        let ring = polys[0][0];
+        for (const p of polys) if (p[0].length > ring.length) ring = p[0];
+        let x = 0, y = 0; for (const [a, b] of ring) { x += a; y += b; }
+        return { type: 'Feature', properties: { NAME: f.properties.NAME }, geometry: { type: 'Point', coordinates: [x / ring.length, y / ring.length] } };
+      }) };
+    }
+    map.getSource('airport-pts')?.setData(airportPts);
+  }
+  map.on('style.load', loadAirportPts); loadAirportPts();
+  // Interstate: red and blue shield. US route: white shield. Oregon route: white oval.
+  function drawShield(type, num) {
+    const n = num.length, H = type === 'or' ? 28 : 36;
+    const W = type === 'or' ? (n >= 3 ? 46 : n === 2 ? 38 : 32) : type === 'i' ? (n >= 3 ? 44 : 36) : (n >= 3 ? 42 : 34);
+    const cv = document.createElement('canvas'); cv.width = W + 4; cv.height = H + 4;
+    const g = cv.getContext('2d'); g.translate(2, 2);
+    const shape = () => {
+      g.beginPath();
+      if (type === 'or') { g.ellipse(W / 2, H / 2, W / 2 - 1.2, H / 2 - 1.2, 0, 0, Math.PI * 2); }
+      else if (type === 'i') {
+        g.moveTo(1.5, 2.5); g.quadraticCurveTo(W / 4, 6, W / 2, 2.5); g.quadraticCurveTo(W * 3 / 4, 6, W - 1.5, 2.5);
+        g.lineTo(W - 1.5, H * 0.42); g.quadraticCurveTo(W - 2.5, H * 0.86, W / 2, H - 1.2); g.quadraticCurveTo(2.5, H * 0.86, 1.5, H * 0.42);
+      } else {
+        g.moveTo(2.5, 1.5); g.lineTo(W - 2.5, 1.5); g.lineTo(W - 2.5, H * 0.48);
+        g.quadraticCurveTo(W - 2.5, H - 2.5, W / 2, H - 1.2); g.quadraticCurveTo(2.5, H - 2.5, 2.5, H * 0.48);
+      }
+      g.closePath();
+    };
+    shape();
+    if (type === 'i') {
+      g.fillStyle = '#4A6491'; g.fill();
+      g.save(); g.clip(); g.fillStyle = '#B5564F'; g.fillRect(0, 0, W, 10.5); g.restore();
+      shape(); g.lineWidth = 2; g.strokeStyle = '#FFFFFF'; g.stroke();
+    } else {
+      g.fillStyle = '#FBFAF7'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#8A8580'; g.stroke();
+    }
+    const size = type === 'or' ? (n >= 3 ? 14 : 15) : (n >= 3 ? 14.5 : 16);
+    g.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = type === 'i' ? '#FFFFFF' : '#4A4744';
+    g.fillText(num, W / 2, type === 'i' ? H * 0.6 : type === 'us' ? H * 0.46 : H / 2 + 1);
+    return g.getImageData(0, 0, cv.width, cv.height);
+  }
+
   map.on('styleimagemissing', (e) => {
+    const sh = /^shield-(i|us|or)-(\w+)$/.exec(e.id);
+    if (sh && !map.hasImage(e.id)) { map.addImage(e.id, drawShield(sh[1], sh[2]), { pixelRatio: 2 }); return; }
     const m = /^pt-(\w+)-(light|dark)(-v)?(-p)?$/.exec(e.id);
     if (m && GLYPH[m[1]] && !map.hasImage(e.id)) { const cv = drawPoint(m[1], m[2], !!m[4], !!m[3]); map.addImage(e.id, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height), { pixelRatio: 2 }); return; }
-    if ((e.id === 'sym-hospital' || e.id === 'sym-fire') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
+    if ((e.id === 'sym-hospital' || e.id === 'sym-fire' || e.id === 'sym-airport') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
     if (e.id === 'prio-badge' && !map.hasImage(e.id)) {   // flag badge for priority clusters
       const S = 30, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), c0 = S / 2;
       g.save(); g.shadowColor = 'rgba(0,0,0,0.3)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
@@ -1383,12 +1479,12 @@
     homesRows.set(id, data); refreshHomes(); openHome(id);
   }
   const norm = (v) => (v && !/^https?:\/\//i.test(v) ? 'https://' + v : v);
-  async function shrink(file) {
-    const img = await createImageBitmap(file, { imageOrientation: 'from-image' }), s = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+  async function shrink(file, max = 1600, q = 0.8) {
+    const img = await createImageBitmap(file, { imageOrientation: 'from-image' }), s = Math.min(1, max / Math.max(img.width, img.height)), cv = document.createElement('canvas');
     cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-    return new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.8));
+    return new Promise((res) => cv.toBlob(res, 'image/jpeg', q));
   }
-  async function upload(file) {
+  async function upload(file) {   // small list copies are made later, only for the cover photo (see thumbs.js)
     const path = `${crypto.randomUUID()}.jpg`, { error } = await sb.storage.from('photos').upload(path, await shrink(file), { contentType: 'image/jpeg' });
     if (error) throw error; return sb.storage.from('photos').getPublicUrl(path).data.publicUrl;
   }

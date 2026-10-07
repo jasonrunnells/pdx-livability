@@ -294,7 +294,7 @@ function card(r) {
   const specs = [r.beds != null ? `${r.beds} bd` : null, r.baths != null ? `${r.baths} ba` : null, r.sqft ? `${(+r.sqft).toLocaleString()} sq ft` : null].filter(Boolean).join(' · ');
   const street = String(r.address || 'Home').split(',')[0];
   return `<button type="button" class="hd-card${r.id === openId ? ' on' : ''}" data-id="${esc(r.id)}">
-    <div class="hd-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic('home')}</div>`}
+    <div class="hd-img">${photo ? `${PDXThumb.img(photoSrc(photo), esc)}` : `<div class="ph">${ic('home')}</div>`}
       ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}
       <div class="hd-badges">${r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}${x?.check && !x.check.ok
         ? `<span class="hd-warn ${x.check.missing ? 'missing' : 'fail'}" title="${x.check.missing ? 'Not enough school data' : 'Does not meet school requirements'}">${ic('info')}${x.check.missing ? 'No school data' : 'School req. not met'}</span>` : ''}</div>

@@ -34,7 +34,7 @@ function updateCard(r) {
   const who = [r.created_by_name, dateStr(r.created_at)].filter(Boolean).join(' · ');
   const photo = (r.photos || [])[0];
   return `<a class="card" style="--dot:${k.color}" href="maps/explorer/index.html?pin=${r.id}">
-    <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph${r.kind === 'explore' || r.kind === 'observation' ? ' solid' : ''}">${ic(ICON[r.kind] ? r.kind : 'explore')}</div>`}
+    <div class="imgwrap">${photo ? `${PDXThumb.img(photoSrc(photo), esc)}` : `<div class="ph${r.kind === 'explore' || r.kind === 'observation' ? ' solid' : ''}">${ic(ICON[r.kind] ? r.kind : 'explore')}</div>`}
       <span class="chip"><i></i>${k.label}</span>${r.kind === 'home' && r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}</div>
     <div class="body"><div class="t">${esc(t)}</div><div class="w">${esc(who)}</div></div>
   </a>`;
@@ -43,7 +43,7 @@ function homeCard(r) {
   const specs = [r.beds != null ? `${r.beds} bd` : null, r.baths != null ? `${r.baths} ba` : null, r.sqft ? `${r.sqft.toLocaleString()} sq ft` : null].filter(Boolean).join(' · ');
   const photo = (r.photos || [])[0];
   return `<a class="card home-card" style="--dot:${KIND.home.color}" href="maps/explorer/index.html?pin=${r.id}">
-    <div class="imgwrap">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : `<div class="ph">${ic('home')}</div>`}
+    <div class="imgwrap">${photo ? `${PDXThumb.img(photoSrc(photo), esc)}` : `<div class="ph">${ic('home')}</div>`}
       ${r.visited ? `<span class="visited">${ic('check')}Visited</span>` : ''}${r.priority ? `<span class="prio">${ic('flag')}Priority</span>` : ''}
       ${specs ? `<div class="specbar">${specs}</div>` : ''}</div>
     <div class="body"><div class="price">${r.price ? usd(r.price) : 'No price'}</div><div class="addr">${esc(r.address || '')}</div></div>
@@ -138,7 +138,7 @@ function peekHTML(r) {
                  r.sqft ? `<span><b>${(+r.sqft).toLocaleString()}</b> sq ft</span>` : ''].join('');
   const rating = +r.rating > 0 ? `<span class="peek-rating">${STAR_SM}${(+r.rating).toFixed(1)}</span>` : '';
   return `<div class="peek-card">
-    <div class="peek-img">${photo ? `<img loading="lazy" alt="" src="${esc(photoSrc(photo))}">` : ic('home')}${r.visited ? `<span class="peek-visited">${ic('check')}</span>` : ''}${r.priority ? `<span class="peek-prio">${ic('flag')}</span>` : ''}</div>
+    <div class="peek-img">${photo ? `${PDXThumb.img(photoSrc(photo), esc)}` : ic('home')}${r.visited ? `<span class="peek-visited">${ic('check')}</span>` : ''}${r.priority ? `<span class="peek-prio">${ic('flag')}</span>` : ''}</div>
     <div class="peek-body">
       <div class="peek-top">${facts ? `<div class="peek-facts">${facts}</div>` : ''}${rating}</div>
       <div class="peek-sub">${[place.hood ? `<span class="nb-hood">${esc(place.hood)}</span>` : '', place.city ? `<span class="nb-city">${esc(place.city)}</span>` : ''].filter(Boolean).join(' · ')}</div>
@@ -493,12 +493,12 @@ addrIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && sugg.length
 const thumbs = () => { thumbsEl.innerHTML = files.map((x, i) => `<img data-i="${i}" alt="Photo ${i + 1} (tap to remove)" src="${URL.createObjectURL(x)}">`).join(''); };
 thumbsEl.onclick = (e) => { const i = e.target.dataset.i; if (i == null) return; files.splice(+i, 1); thumbs(); };
 form.querySelector('input[type=file]').onchange = (e) => { files.push(...e.target.files); e.target.value = ''; thumbs(); };
-async function shrink(file) {
-  const img = await createImageBitmap(file, { imageOrientation: 'from-image' }), s = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+async function shrink(file, max = 1600, q = 0.8) {
+  const img = await createImageBitmap(file, { imageOrientation: 'from-image' }), s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
   c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.8));
+  return new Promise((res) => c.toBlob(res, 'image/jpeg', q));
 }
-async function upload(file) {
+async function upload(file) {   // small list copies are made later, only for the cover photo (see thumbs.js)
   const path = `${crypto.randomUUID()}.jpg`, { error } = await sb.storage.from('photos').upload(path, await shrink(file), { contentType: 'image/jpeg' });
   if (error) throw error; return sb.storage.from('photos').getPublicUrl(path).data.publicUrl;
 }
