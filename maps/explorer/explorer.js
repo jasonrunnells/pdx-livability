@@ -1404,16 +1404,45 @@
   const sheetPad = () => (mobile.matches
     ? { top: 40, bottom: Math.round(map.getContainer().clientHeight * 0.68) + 16, left: 30, right: 30 }
     : { top: 60, bottom: 60, left: 380 + 16 + 50, right: 60 });
+  /* 3D: the map's own offset/padding math assumes a flat, untilted map, so in 3D a picked spot landed off-center.
+     Instead every pick in 3D goes to the same kind of view: a fixed tilt (PICK_PITCH), a set zoom, the current
+     compass direction, with the spot in the middle of the open area above the card (phone) or beside it (desktop).
+     The center that does that is found on a copy of the camera (nothing moves), allowing for the hills, then the
+     map glides there in one move. */
+  const PICK_PITCH = 50, PICK_ZOOM = 17.5;
+  function frame3D(ll, zoom, duration = 700) {
+    const pad = sheetPad(), box = map.getContainer(), W = box.clientWidth, H = box.clientHeight;
+    const goal = new maplibregl.Point((pad.left + W - pad.right) / 2, (pad.top + H - pad.bottom) / 2);
+    const target = maplibregl.LngLat.convert(ll);
+    let center = target;
+    try {
+      const T = map.terrain, tr = map.transform.clone();
+      tr.pitch = PICK_PITCH; tr.zoom = zoom;
+      const elev = (q) => { try { return T ? T.getElevationForLngLatZoom(q, Math.floor(zoom)) || 0 : 0; } catch { return 0; } };
+      for (let i = 0; i < 6; i++) {
+        tr.center = center; tr.elevation = elev(center);
+        const d = tr.locationPoint(target, T).sub(goal);
+        if (Math.hypot(d.x, d.y) < 0.5) break;
+        center = tr.pointLocation(tr.centerPoint.add(d));
+      }
+    } catch (err) { console.warn(err); center = target; }
+    map.stop();
+    map.easeTo({ center, zoom, pitch: PICK_PITCH, duration });
+  }
+  const bboxCenter = ([x0, y0, x1, y1]) => [(x0 + x1) / 2, (y0 + y1) / 2];
+  function frameBounds(bb, maxZoom, duration) {   // fit a shape in the open area (3D-safe)
+    if (!is3D) { map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: sheetPad(), maxZoom, duration }); return; }
+    const cam = map.cameraForBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: sheetPad(), maxZoom, bearing: map.getBearing() });
+    frame3D(bboxCenter(bb), Math.min((cam?.zoom ?? PICK_ZOOM) - 0.3, maxZoom), duration);   // a touch wider: tilted views foreshorten
+  }
   function cameraToPoint(ll, zoom) {
+    if (is3D) return frame3D(ll, PICK_ZOOM);   // same view every time in 3D
     const pad = sheetPad(), box = map.getContainer();
     const offset = [(pad.left - pad.right) / 2, (pad.top - pad.bottom) / 2];
     map.easeTo({ center: ll, zoom: Math.max(map.getZoom(), zoom), offset, duration: 700 });
     void box;
   }
-  function cameraToLot(f) {
-    const [x0, y0, x1, y1] = bboxOf(f);
-    map.fitBounds([[x0, y0], [x1, y1]], { padding: sheetPad(), maxZoom: 19, duration: 700 });
-  }
+  function cameraToLot(f) { frameBounds(bboxOf(f), 19, 700); }
 
   async function homeCard(r, sa) {
     const [hoods, cities] = await Promise.all([getJSON('data/neighborhoods.geojson').catch(() => null), getJSON('data/cities.geojson').catch(() => null)]);
@@ -1687,12 +1716,13 @@
       const fc = await getJSON('data/neighborhoods.geojson');   // full shape (what the map hands back can be clipped to tiles)
       const full = fc.features.find((x) => x.properties.RegionID === p.RegionID) || f;
       const html = await hoodCard(p, full, ll);
-      if (selected && selected.key === key && selected.id === f.id) { openSheet(html); if (mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 }); }
+      if (selected && selected.key === key && selected.id === f.id) { openSheet(html); if (is3D) frame3D(ll, map.getZoom(), 500); else if (mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 }); }
     } else if (key === 'tracts') openSheet(tractCard(p));
     else if (key === 'cities') openSheet(cityCard(p), { noFull: true });
     else if (key === 'sas') { const html = await sasCard(p); if (selected && selected.key === key && selected.id === f.id) openSheet(html); }
     const shape = key === 'hoods' ? null : f;   // neighborhoods fit themselves below
-    if (shape && mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 });
+    if (shape && is3D) frame3D(ll, map.getZoom(), 500);
+    else if (shape && mobile.matches) map.easeTo({ center: ll, offset: [0, -map.getContainer().clientHeight * 0.34], duration: 500 });
   }
   // A tap on the map while a card or the layers panel is open only closes it (nothing gets selected).
   // Decided at touch-down, before the card/panel closes, so the next tap selects as normal.
@@ -1888,7 +1918,7 @@
         else {
           const [x0, y0, x1, y1] = bboxOf(src), ll = [(x0 + x1) / 2, (y0 + y1) / 2];
           await openArea(r.key, f, ll);
-          map.fitBounds([[x0, y0], [x1, y1]], { padding: sheetPad(), maxZoom: 16, duration: 800 });
+          frameBounds([x0, y0, x1, y1], 16, 800);
         }
       }
     } catch (err) { toast(err.message || String(err)); }
