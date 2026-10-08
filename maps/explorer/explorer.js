@@ -17,6 +17,8 @@
     base:      new URL('tiles/base.pmtiles', location.href).href,
     buildings: new URL('tiles/buildings.pmtiles?v=2', location.href).href,   // ?v= busts the browser cache when tiles are rebuilt
     lots:      new URL('tiles/lots.pmtiles', location.href).href,
+    treesW:    new URL('tiles/trees_w.pmtiles?v=1', location.href).href,   // 3D trees, all of Metro (LiDAR), split west/east to stay
+    treesE:    new URL('tiles/trees_e.pmtiles?v=1', location.href).href,   //   under GitHub's file limit; built by tools/treetops.py + trees.py
   };
   // Free, no-key elevation tiles (AWS Open Data "Terrain Tiles") used for hillshade.
   const TERRAIN = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
@@ -30,8 +32,15 @@
   const METRO  = [[-123.1535, 45.2814], [-122.3315, 45.6574]];  // Metro boundary extent
   const BOUNDS = [[-124.30, 44.30], [-121.20, 46.60]];   // how far you can pan
   const ZOOM   = { min: 8, max: 19.5, buildings: 15 };
+  // Aerial photo view (button under the layers button). City of Portland 2025 aerials: free public tiles under the city's
+  // open data terms (public domain, PDDL). Every load starts on the normal map; ?aerial=1 in the address starts in aerial.
+  let AERIAL = new URLSearchParams(location.search).has('aerial');
+  const TREE_LAYERS = ['trees-3d-treesW', 'trees-3d-treesE'];
   let is3D = false;              // 3D view: tilted map, raised hills and buildings (button under the zoom controls)
-  const EXAGGERATE = 1.4;        // how much the hills are stretched in 3D
+  const EXAGGERATE = 1.8;        // how much the hills are stretched in 3D (was 1.4)
+  // Hill shading strength by zoom: a bit stronger than before on the flat map, stronger still in 3D
+  const HILL_FLAT = ['interpolate', ['linear'], ['zoom'], 8, 0.7, 13, 0.55, 17, 0.38];
+  const HILL_3D   = ['interpolate', ['linear'], ['zoom'], 8, 0.85, 13, 0.7, 17, 0.5];
   const MAX_PITCH_3D = 66;       // max tilt in 3D (60 felt too limiting, 72 shows a lot of horizon)
 
   /* ---------- Colors (light = the layer guide) ---------- */
@@ -395,6 +404,11 @@
         base:      { type: 'vector', url: 'pmtiles://' + TILES.base },
         buildings: { type: 'vector', url: 'pmtiles://' + TILES.buildings },
         lots:      { type: 'vector', url: 'pmtiles://' + TILES.lots },
+        treesW:    { type: 'vector', url: 'pmtiles://' + TILES.treesW },
+        treesE:    { type: 'vector', url: 'pmtiles://' + TILES.treesE },
+        aerial:    { type: 'raster', tileSize: 256, maxzoom: 20, bounds: [-123.18, 45.27, -122.33, 45.66],
+          tiles: ['aerialclip://{z}/{y}/{x}'],   // city tiles, trimmed to Metro with a soft edge (see the aerialclip protocol)
+          attribution: 'Aerial photos: City of Portland' },   // only downloads while the aerial view is on
         terrain3d: { type: 'raster-dem', tiles: [TERRAIN], tileSize: 256, maxzoom: 15, encoding: 'terrarium' },   // separate copy for 3D hills (sharing one with the hillshade blurs it)
         terrain:   { type: 'raster-dem', tiles: [TERRAIN], tileSize: 256, maxzoom: 15, encoding: 'terrarium',
                      attribution: 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>' },
@@ -430,7 +444,7 @@
           paint: {
             'hillshade-illumination-anchor': 'map',
             'hillshade-illumination-direction': 315,
-            'hillshade-exaggeration': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 13, 0.45, 17, 0.3],
+            'hillshade-exaggeration': is3D ? HILL_3D : HILL_FLAT,
             'hillshade-shadow-color': c.shadow,
             'hillshade-highlight-color': c.highlight,
             'hillshade-accent-color': c.accent,
@@ -477,6 +491,14 @@
             'line-width': ['interpolate', ['linear'], ['zoom'], 13, 4, 16, 6, 19, 9],
             'line-dasharray': [0.25, 2.2],
           } },
+        /* Aerial view: photos over the ground colors, with lot lines redrawn in white on top (hidden unless aerial is on) */
+        ...[
+          { id: 'aerial', type: 'raster', source: 'aerial', layout: { visibility: AERIAL ? 'visible' : 'none' }, paint: { 'raster-fade-duration': 150 } },
+          { id: 'aerial-lot-lines', type: 'line', source: 'lots', 'source-layer': 'lots', minzoom: 15, layout: { visibility: AERIAL ? 'visible' : 'none' },
+            paint: { 'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 17, 1, 19, 1.6],
+                     'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6, 0.6] } },
+        ],
+
         { id: 'streets-case', type: 'line', source: 'base', 'source-layer': 'streets',
           filter: ['!=', ['get', 'class'], 'rail'],
           layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': streetRank },
@@ -492,7 +514,7 @@
 
         /* Buildings (zoomed in only) */
         { id: 'buildings', type: 'fill', source: 'buildings', 'source-layer': 'buildings', minzoom: ZOOM.buildings,
-          layout: { visibility: is3D ? 'none' : 'visible' },
+          layout: { visibility: is3D || AERIAL ? 'none' : 'visible' },   // aerial view: the photo shows the roofs
           paint: {
             'fill-color': c.building,
             'fill-outline-color': c.buildingLine,
@@ -505,9 +527,24 @@
             'fill-extrusion-color': c.building3d,
             'fill-extrusion-height': ['coalesce', ['get', 'h'], 4],   // full height right away (only the opacity fades in)
             'fill-extrusion-base': 0,
-            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, 0.94],
+            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.15, 1],   // solid almost at once (a slow fade looked ghostly)
             'fill-extrusion-vertical-gradient': true,
           } },
+
+        /* 3D trees (3D view only): trunk + crown tiers per tree from LiDAR treetops, all of Metro.
+           s: 0-2 leafy greens, 3-4 evergreen greens, 9 trunk. b/h: bottom/top in meters. Two sources (west/east). */
+        ...['treesW', 'treesE'].map((src) => ({ id: 'trees-3d-' + src, type: 'fill-extrusion', source: src, 'source-layer': 'trees', minzoom: ZOOM.buildings,
+          layout: { visibility: is3D ? 'visible' : 'none' },
+          paint: {
+            'fill-extrusion-color': ['match', ['get', 's'],
+              9, theme === 'dark' ? '#4A3A2C' : '#7A5C42',
+              0, theme === 'dark' ? '#4A6B3E' : '#7FA862', 1, theme === 'dark' ? '#40613A' : '#6E9B57', 2, theme === 'dark' ? '#56723F' : '#8AAE5E',
+              3, theme === 'dark' ? '#2C4A33' : '#3F6E47', theme === 'dark' ? '#27432F' : '#4A7A4F'],
+            'fill-extrusion-base': ['get', 'b'],
+            'fill-extrusion-height': ['get', 'h'],
+            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.15, 1],
+            'fill-extrusion-vertical-gradient': true,
+          } })),
 
         /* Night: a see-through dark wash over the ground (3D sun only; opacity set by the Sun module) */
         { id: 'night-tint', type: 'background', paint: { 'background-color': '#0A1430', 'background-opacity': 0 } },
@@ -663,6 +700,67 @@
 
   const protocol = new pmtiles.Protocol();
   maplibregl.addProtocol('pmtiles', protocol.tile);
+
+  /* Aerial tiles trimmed to the Metro boundary. Each city photo tile is fetched, then cut to the Metro shape with a soft
+     edge that fades out over the last stretch inside the border (~250 m, less when zoomed far in). Outside Metro the tile
+     comes back empty, so the normal map shows there. Tiles well inside Metro pass through untouched. */
+  const AERIAL_URL = 'https://www.portlandmaps.com/arcgis/rest/services/Public/Aerial_Photos_Summer_2025/MapServer/tile/';
+  let metroUnit = null;   // Metro rings in 0..1 web-mercator units, each with its bounding box
+  const toUnit = ([lng, lat]) => [(lng + 180) / 360, (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2];
+  async function metroRings() {
+    if (!metroUnit) {
+      const fc = await fetch('data/metro.geojson').then((r) => r.json());
+      metroUnit = [];
+      const all = [];
+      for (const f of fc.features) for (const poly of (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates)) for (const ring of poly) {
+        const pts = ring.map(toUnit), xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+        all.push({ pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) });
+      }
+      // The Metro file has small sliver pieces lying inside the main boundary. Overlapping pieces would punch holes and
+      // fake edges into the photo, so keep only the outer boundary: drop any piece that sits inside a bigger one.
+      all.sort((a, b) => b.pts.length - a.pts.length);
+      for (const r of all) if (!metroUnit.some((big) => insideMetro([big], r.pts[0][0], r.pts[0][1]))) metroUnit.push(r);
+    }
+    return metroUnit;
+  }
+  const insideMetro = (rings, x, y) => { let c = false; for (const { pts } of rings) for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const canvas2d = (w, h) => { if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h); const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const canvasBytes = async (c) => (c.convertToBlob ? c.convertToBlob({ type: 'image/png' }) : new Promise((res) => c.toBlob(res, 'image/png'))).then((b) => b.arrayBuffer());
+  let emptyTile = null;
+  maplibregl.addProtocol('aerialclip', async (params, abort) => {
+    const [z, y, x] = params.url.slice('aerialclip://'.length).split('/').map(Number);
+    const rings = await metroRings(), ws = 2 ** z;
+    const metersPerPx = 40075016.7 * Math.cos(45.5 * Math.PI / 180) / (256 * ws);
+    const fade = Math.max(2, Math.min(40, 250 / metersPerPx));          // edge fade, in tile pixels
+    const pad = fade / 256 / ws;                                         // same, in 0..1 units
+    const tx0 = x / ws - pad, tx1 = (x + 1) / ws + pad, ty0 = y / ws - pad, ty1 = (y + 1) / ws + pad;
+    const near = rings.filter((r) => r.x1 >= tx0 && r.x0 <= tx1 && r.y1 >= ty0 && r.y0 <= ty1);
+    const edgeHere = near.some((r) => r.pts.some(([px, py], i) => {
+      const [qx, qy] = r.pts[(i + 1) % r.pts.length];
+      return Math.max(px, qx) >= tx0 && Math.min(px, qx) <= tx1 && Math.max(py, qy) >= ty0 && Math.min(py, qy) <= ty1; }));
+    if (!edgeHere && !insideMetro(near, (x + 0.5) / ws, (y + 0.5) / ws)) {   // wholly outside Metro: nothing to draw
+      if (!emptyTile) emptyTile = await canvasBytes(canvas2d(1, 1));
+      return { data: emptyTile };
+    }
+    const res = await fetch(AERIAL_URL + `${z}/${y}/${x}`, { signal: abort.signal });
+    if (!res.ok) throw new Error('aerial tile ' + res.status);
+    const raw = await res.arrayBuffer();
+    if (!edgeHere) return { data: raw };                                   // wholly inside: use as is
+    const img = await createImageBitmap(new Blob([raw]));
+    const mask = canvas2d(256, 256), m = mask.getContext('2d');
+    const trace = () => { m.beginPath(); for (const { pts } of near) pts.forEach(([px, py], i) => {
+      const sx = (px * ws - x) * 256, sy = (py * ws - y) * 256; i ? m.lineTo(sx, sy) : m.moveTo(sx, sy); }); };
+    trace(); m.fillStyle = '#fff'; m.fill('evenodd');
+    // Soft fade toward the border: many thin see-through erase strokes, one per pixel of fade (so no visible steps)
+    const steps = Math.max(6, Math.min(40, Math.round(fade)));
+    m.globalCompositeOperation = 'destination-out'; m.lineJoin = 'round';
+    m.strokeStyle = `rgba(0,0,0,${(1 - Math.pow(0.04, 1 / steps)).toFixed(4)})`;   // together they fade to ~4% at the border
+    for (let k = 1; k <= steps; k++) { m.lineWidth = 2 * fade * k / steps; trace(); m.stroke(); }
+    const out = canvas2d(256, 256), o = out.getContext('2d');
+    o.drawImage(img, 0, 0); o.globalCompositeOperation = 'destination-in'; o.drawImage(mask, 0, 0);
+    return { data: await canvasBytes(out) };
+  });
 
   const darkQuery = matchMedia('(prefers-color-scheme: dark)');
   const themeNow = () => (darkQuery.matches ? 'dark' : 'light');
@@ -855,6 +953,41 @@
   }
   const layersCtrl = new LayersControl();
   map.addControl(layersCtrl, 'top-right');
+
+  /* Aerial button (right under the layers button): photo view on/off */
+  let btnAerial = null;
+  function setAerial(on) {
+    AERIAL = on;
+    btnAerial?.classList.toggle('on', on); btnAerial?.setAttribute('aria-pressed', on);
+    for (const id of ['aerial', 'aerial-lot-lines']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    if (map.getLayer('buildings')) map.setLayoutProperty('buildings', 'visibility', on || is3D ? 'none' : 'visible');   // the photo shows the roofs
+    aerialLook();
+  }
+  // Over the photo: streets a bit see-through (the real road shows) and label halos a little thicker so text stays readable.
+  let haloBase = null;
+  function aerialLook() {
+    if (!map.getLayer('streets')) return;
+    map.setPaintProperty('streets', 'line-opacity', AERIAL ? 0.72 : 1);
+    map.setPaintProperty('streets-case', 'line-opacity', AERIAL ? 0.35 : 1);
+    if (!haloBase) {   // remember each label layer's normal halo width (numbers only)
+      haloBase = {};
+      for (const l of map.getStyle().layers) if (l.type === 'symbol' && typeof l.paint?.['text-halo-width'] === 'number') haloBase[l.id] = l.paint['text-halo-width'];
+    }
+    for (const [id, w] of Object.entries(haloBase)) if (map.getLayer(id)) map.setPaintProperty(id, 'text-halo-width', AERIAL ? w + 0.7 : w);
+  }
+  map.on('style.load', () => { haloBase = null; if (AERIAL) aerialLook(); });   // theme switch rebuilds the style
+  class AerialControl {
+    onAdd() {
+      const wrap = document.createElement('div');
+      wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group aerial-ctrl';
+      wrap.innerHTML = `<button type="button" aria-label="Aerial photos" aria-pressed="${AERIAL}"${AERIAL ? ' class="on"' : ''}><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 16.5l5-5 4 4 2.5-2.5 5.5 5.5"/><circle cx="15.5" cy="9" r="1.6"/></svg></button>`;
+      btnAerial = wrap.querySelector('button');
+      btnAerial.onclick = () => setAerial(!AERIAL);
+      return wrap;
+    }
+    onRemove() {}
+  }
+  if (!EMBED) map.addControl(new AerialControl(), 'top-right');
 
   /* ---------- Map symbols drawn in code (hospital H, fire station cross) ---------- */
   function drawSymbol(kind) {
@@ -2135,7 +2268,6 @@
     }
     onRemove() {}
   }
-  if (!EMBED) map.addControl(new PinControl(), 'top-right');
 
   /* ---------- 3D view ----------
      Tilts the map, raises the hills (terrain) and swaps flat buildings for 3D ones (heights from tools/prep.py).
@@ -2147,8 +2279,10 @@
     document.body.classList.toggle('map-3d', on);   // shows the sun button
     if (!on && sunPanel) { sunPanel.wrap.querySelector('.sun-pop').hidden = true; sunState.live = true; }
     sunLoop(on);
-    if (map.getLayer('buildings')) map.setLayoutProperty('buildings', 'visibility', on ? 'none' : 'visible');
+    if (map.getLayer('buildings')) map.setLayoutProperty('buildings', 'visibility', on || AERIAL ? 'none' : 'visible');
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', on ? 'visible' : 'none');
+    for (const id of TREE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    if (map.getLayer('hillshade')) map.setPaintProperty('hillshade', 'hillshade-exaggeration', on ? HILL_3D : HILL_FLAT);
     if (on) {
       map.setMaxPitch(MAX_PITCH_3D);
       map.setTerrain({ source: 'terrain3d', exaggeration: EXAGGERATE });
@@ -2156,7 +2290,7 @@
       sunApply();
     } else {
       map.setTerrain(null);
-      if (farTrim && map.getLayer('buildings-3d')) { map.setFilter('buildings-3d', null); farTrim = null; }
+      if (farTrim && map.getLayer('buildings-3d')) { setTrim(null); farTrim = null; }
       map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
       map.once('moveend', () => { if (!is3D) map.setMaxPitch(0); });
       sunApply();
@@ -2168,6 +2302,7 @@
      in view) are untouched. Updated when the map stops moving; switches itself off if the map engine can't do it. */
   const TRIM_FROM_TOP = 0.12;
   let farTrim = null, farTrimOK = true;
+  const setTrim = (f) => { map.setFilter('buildings-3d', f); for (const id of TREE_LAYERS) if (map.getLayer(id)) map.setFilter(id, f); };   // trees are trimmed with buildings
   function trimFarBuildings() {
     if (!map.getLayer('buildings-3d') || !farTrimOK) return;
     const box = map.getContainer(), W = box.clientWidth, H = box.clientHeight;
@@ -2177,15 +2312,15 @@
       const d = near.distanceTo(far);
       if (Number.isFinite(d) && d > 0) r = { at: near, d: Math.max(2500, Math.min(40000, d)) };
     }
-    if (!r) { if (farTrim) { map.setFilter('buildings-3d', null); farTrim = null; } return; }
+    if (!r) { if (farTrim) { setTrim(null); farTrim = null; } return; }
     if (farTrim && Math.abs(farTrim.d - r.d) < r.d * 0.1 && r.at.distanceTo(farTrim.at) < r.d * 0.1) return;   // barely changed
     const filter = ['<', ['distance', { type: 'Point', coordinates: [r.at.lng, r.at.lat] }], r.d];
     try {
       const all = map.querySourceFeatures('buildings', { sourceLayer: 'buildings' }).length;
       const kept = map.querySourceFeatures('buildings', { sourceLayer: 'buildings', filter }).length;
       if (all > 0 && kept === 0) throw new Error('distance filter unsupported');
-      map.setFilter('buildings-3d', filter); farTrim = r;
-    } catch (err) { console.warn('3D far-building trim off:', err.message); farTrimOK = false; map.setFilter('buildings-3d', null); farTrim = null; }
+      setTrim(filter); farTrim = r;
+    } catch (err) { console.warn('3D far-building trim off:', err.message); farTrimOK = false; setTrim(null); farTrim = null; }
   }
   map.on('moveend', trimFarBuildings);
   map.on('style.load', () => { farTrim = null; trimFarBuildings(); });
@@ -2296,10 +2431,11 @@
   function updateShadows(sun) {
     const src = map.getSource('shadows'); if (!src) return;
     const on = is3D && sun.alt > 0.5 && map.getZoom() >= ZOOM.buildings;
-    map.setPaintProperty('building-shadows', 'fill-opacity', on ? Math.min(1, sun.alt / 6) * (themeNow() === 'dark' ? 0.35 : 0.22) : 0);
+    const shade = on ? Math.min(1, sun.alt / 10) * (themeNow() === 'dark' ? 0.32 : 0.2) : 0;   // fades as the sun gets low
+    map.setPaintProperty('building-shadows', 'fill-opacity', ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.15, shade]);   // appears with the buildings
     if (!on) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
     const lat = map.getCenter().lat, mLng = 1 / (111320 * Math.cos(lat * Math.PI / 180)), mLat = 1 / 110540;
-    const reach = Math.min(12, 1 / Math.tan(sun.alt * Math.PI / 180));    // shadow length per meter of height (capped)
+    const reach = Math.min(6, 1 / Math.tan(sun.alt * Math.PI / 180));     // shadow length per meter of height (capped so low sun doesn't smear streaks)
     const dx = -Math.sin(sun.az * Math.PI / 180) * reach * mLng, dy = -Math.cos(sun.az * Math.PI / 180) * reach * mLat;
     const b = map.getBounds(), out = [];
     for (const f of map.querySourceFeatures('buildings', { sourceLayer: 'buildings' })) {
@@ -2308,6 +2444,7 @@
       const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((p) => p[0]) : [];
       for (const r of rings) {
         if (!r?.length || !b.contains(r[0])) continue;
+        if (farTrim && farTrim.at.distanceTo({ lng: r[0][0], lat: r[0][1] }) > farTrim.d) continue;   // building is trimmed: no shadow either
         const pts = []; for (const [x, y] of r) { pts.push([x, y], [x + dx * h, y + dy * h]); }
         out.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [hull(pts)] } });
       }
@@ -2358,6 +2495,7 @@
     onRemove() {}
   }
   if (!EMBED) map.addControl(new SunControl(), 'top-right');
+  if (!EMBED) map.addControl(new PinControl(), 'top-right');   // last in the stack: easy to reach
   // Press and hold (phones) / right-click (computers): save a place to explore
   let pressedAt = -1e9, holdTimer = 0, holdStart = null;
   const cancelHold = () => { clearTimeout(holdTimer); holdStart = null; };
