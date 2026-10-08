@@ -1104,3 +1104,29 @@ html.embed:not(.wide) #map { opacity: 0; }
 .view3d-ctrl button span { display: block; font: 700 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0.02em; }
 .view3d-ctrl button.on { background: #2563EB; color: #FFFFFF; }
 .view3d-ctrl button.on:hover { background: #1D4FD8; }
+
+/* Sun & time of day (3D only): button under 3D, panel opens to its left */
+.sun-ctrl { display: none; position: relative; overflow: visible; }
+body.map-3d .sun-ctrl { display: block; }
+.sun-ctrl > button { color: var(--ctl-ink, var(--ink)); }
+.sun-ctrl svg.ic { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.sun-ctrl > button[aria-expanded="true"] { color: #D97706; }
+.sun-pop { position: absolute; right: calc(100% + 10px); top: 0; width: 240px; padding: 12px 14px; border-radius: 14px;
+  background: var(--paper, #FFFFFF); color: var(--ink, #222); box-shadow: 0 8px 28px rgba(0,0,0,.18); font: 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.sun-pop[hidden] { display: none; }
+.sun-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sun-time { font-size: 18px; font-weight: 700; }
+.sun-info { font-size: 12.5px; opacity: .7; }
+.sun-slider { width: 100%; accent-color: #F59E0B; margin: 2px 0 10px; }
+.sun-row { display: flex; gap: 8px; }
+.sun-date { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 6px 8px; border: 1px solid rgba(0,0,0,.15); border-radius: 9px; background: transparent; color: inherit; }
+.sun-now { font: inherit; font-weight: 700; font-size: 13.5px; padding: 6px 12px; border: 0; border-radius: 9px; background: rgba(0,0,0,.07); color: inherit; cursor: pointer; }
+.sun-now.on { background: #F59E0B; color: #FFFFFF; }
+@media (prefers-color-scheme: dark) {
+  .sun-pop { background: #23272C; color: #E8E6E1; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+  .sun-date { border-color: rgba(255,255,255,.18); color-scheme: dark; }
+  .sun-now { background: rgba(255,255,255,.1); }
+}
+.maplibregl-ctrl-group .sun-pop button.sun-now { width: auto; height: auto; display: inline-block; border: 0; border-top: 0; }
+.maplibregl-ctrl-group .sun-pop button.sun-now:hover { background: rgba(0,0,0,.12); }
+.maplibregl-ctrl-group .sun-pop button.sun-now.on:hover { background: #E08E09; }

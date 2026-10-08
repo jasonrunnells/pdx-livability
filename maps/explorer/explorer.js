@@ -32,6 +32,7 @@
   const ZOOM   = { min: 8, max: 19.5, buildings: 15 };
   let is3D = false;              // 3D view: tilted map, raised hills and buildings (button under the zoom controls)
   const EXAGGERATE = 1.4;        // how much the hills are stretched in 3D
+  const MAX_PITCH_3D = 66;       // max tilt in 3D (60 felt too limiting, 72 shows a lot of horizon)
 
   /* ---------- Colors (light = the layer guide) ---------- */
   const PALETTE = {
@@ -403,6 +404,7 @@
         airports:  { type: 'geojson', data: 'data/airports.geojson' },
         shields:   { type: 'geojson', data: 'data/shields.geojson' },
         libraries: { type: 'geojson', data: 'data/libraries.geojson' },
+        shadows:   { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, tolerance: 0, maxzoom: 16 },   // 3D sun shadows (made in the browser)
         osm:       { type: 'geojson', data: 'data/osm_places.geojson' },
         'airport-pts': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       },
@@ -484,6 +486,10 @@
           layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': streetRank },
           paint: { 'line-color': c.street, 'line-width': streetWidth } },
 
+        /* 3D sun shadows of buildings (filled in by the Sun module; empty otherwise) */
+        { id: 'building-shadows', type: 'fill', source: 'shadows', minzoom: ZOOM.buildings,
+          paint: { 'fill-color': theme === 'dark' ? '#000000' : '#3B342C', 'fill-opacity': 0, 'fill-antialias': false } },
+
         /* Buildings (zoomed in only) */
         { id: 'buildings', type: 'fill', source: 'buildings', 'source-layer': 'buildings', minzoom: ZOOM.buildings,
           layout: { visibility: is3D ? 'none' : 'visible' },
@@ -492,16 +498,19 @@
             'fill-outline-color': c.buildingLine,
             'fill-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, 1],
           } },
-        /* 3D buildings (3D view only): rise from the ground as they fade in. h = height in meters */
+        /* 3D buildings (3D view only): full height, fading in. h = height in meters */
         { id: 'buildings-3d', type: 'fill-extrusion', source: 'buildings', 'source-layer': 'buildings', minzoom: ZOOM.buildings,
           layout: { visibility: is3D ? 'visible' : 'none' },
           paint: {
             'fill-extrusion-color': c.building3d,
-            'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, ['coalesce', ['get', 'h'], 4]],
+            'fill-extrusion-height': ['coalesce', ['get', 'h'], 4],   // full height right away (only the opacity fades in)
             'fill-extrusion-base': 0,
             'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.6, 0.94],
             'fill-extrusion-vertical-gradient': true,
           } },
+
+        /* Night: a see-through dark wash over the ground (3D sun only; opacity set by the Sun module) */
+        { id: 'night-tint', type: 'background', paint: { 'background-color': '#0A1430', 'background-opacity': 0 } },
 
         /* Metro boundary */
         { id: 'metro', type: 'line', source: 'base', 'source-layer': 'metro',
@@ -1796,7 +1805,7 @@
   map.getContainer().addEventListener('pointerdown', (e) => {
     if (!e.isPrimary) return;
     if (e.target !== map.getCanvas()) { dismissTap = false; return; }   // buttons and controls don't count
-    const panelOpen = [...document.querySelectorAll('.layers-panel')].some((el) => !el.hidden);
+    const panelOpen = [...document.querySelectorAll('.layers-panel, .sun-pop')].some((el) => !el.hidden);
     // desktop: only the layers panel blocks the tap; an open card doesn't (clicking elsewhere just picks the next thing)
     dismissTap = panelOpen || searchOpen || searchClosedAt === e.timeStamp || (mobile.matches && sheet.classList.contains('open') && !sheetLock);
   }, true);
@@ -2135,18 +2144,51 @@
   function set3D(on) {
     is3D = on;
     btn3d?.classList.toggle('on', on); btn3d?.setAttribute('aria-pressed', on);
+    document.body.classList.toggle('map-3d', on);   // shows the sun button
+    if (!on && sunPanel) { sunPanel.wrap.querySelector('.sun-pop').hidden = true; sunState.live = true; }
+    sunLoop(on);
     if (map.getLayer('buildings')) map.setLayoutProperty('buildings', 'visibility', on ? 'none' : 'visible');
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', on ? 'visible' : 'none');
     if (on) {
-      map.setMaxPitch(72);
+      map.setMaxPitch(MAX_PITCH_3D);
       map.setTerrain({ source: 'terrain3d', exaggeration: EXAGGERATE });
       map.easeTo({ pitch: 58, bearing: map.getBearing() || -12, duration: 1100 });
+      sunApply();
     } else {
       map.setTerrain(null);
+      if (farTrim && map.getLayer('buildings-3d')) { map.setFilter('buildings-3d', null); farTrim = null; }
       map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
       map.once('moveend', () => { if (!is3D) map.setMaxPitch(0); });
+      sunApply();
     }
   }
+  /* The map engine draws 3D buildings even when a hill is between you and them, so at steep tilts the very farthest
+     buildings (in the thin band just under the horizon) float above ridgelines into the sky. Only that band is dropped:
+     keep every building closer than the ground shown about 12% down from the top of the screen. Gentle tilts (no sky
+     in view) are untouched. Updated when the map stops moving; switches itself off if the map engine can't do it. */
+  const TRIM_FROM_TOP = 0.12;
+  let farTrim = null, farTrimOK = true;
+  function trimFarBuildings() {
+    if (!map.getLayer('buildings-3d') || !farTrimOK) return;
+    const box = map.getContainer(), W = box.clientWidth, H = box.clientHeight;
+    let r = null;
+    if (is3D && map.getPitch() > 62 && map.getZoom() >= ZOOM.buildings) {
+      const near = map.unproject([W / 2, H - 10]), far = map.unproject([W / 2, H * TRIM_FROM_TOP]);
+      const d = near.distanceTo(far);
+      if (Number.isFinite(d) && d > 0) r = { at: near, d: Math.max(2500, Math.min(40000, d)) };
+    }
+    if (!r) { if (farTrim) { map.setFilter('buildings-3d', null); farTrim = null; } return; }
+    if (farTrim && Math.abs(farTrim.d - r.d) < r.d * 0.1 && r.at.distanceTo(farTrim.at) < r.d * 0.1) return;   // barely changed
+    const filter = ['<', ['distance', { type: 'Point', coordinates: [r.at.lng, r.at.lat] }], r.d];
+    try {
+      const all = map.querySourceFeatures('buildings', { sourceLayer: 'buildings' }).length;
+      const kept = map.querySourceFeatures('buildings', { sourceLayer: 'buildings', filter }).length;
+      if (all > 0 && kept === 0) throw new Error('distance filter unsupported');
+      map.setFilter('buildings-3d', filter); farTrim = r;
+    } catch (err) { console.warn('3D far-building trim off:', err.message); farTrimOK = false; map.setFilter('buildings-3d', null); farTrim = null; }
+  }
+  map.on('moveend', trimFarBuildings);
+  map.on('style.load', () => { farTrim = null; trimFarBuildings(); });
   class View3DControl {
     onAdd() {
       const wrap = document.createElement('div');
@@ -2159,6 +2201,163 @@
     onRemove() {}
   }
   if (!EMBED) map.addControl(new View3DControl(), 'top-right');
+
+  /* ---------- Sun & sky (3D only) ----------
+     The real sun for the spot you're looking at: position from the date and time (standard astronomy formulas, same as
+     the SunCalc library), no internet needed. It sets the sky colors, the light on hills and 3D buildings, a night wash,
+     and building shadows (worked out here from each building's height). Follows the clock (updates every minute) unless
+     you pick a date/time in the sun panel. Flat map is unaffected. */
+  const SUN = (() => {
+    const rad = Math.PI / 180, e = rad * 23.4397;
+    const days = (date) => date.valueOf() / 864e5 - 0.5 + 2440588 - 2451545;
+    return (date, lat, lng) => {
+      const d = days(date), M = rad * (357.5291 + 0.98560028 * d);
+      const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+      const L = M + C + rad * 102.9372 + Math.PI;
+      const dec = Math.asin(Math.sin(e) * Math.sin(L)), ra = Math.atan2(Math.sin(L) * Math.cos(e), Math.cos(L));
+      const H = rad * (280.16 + 360.9856235 * d) - rad * -lng - ra, phi = rad * lat;
+      let alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+      if (alt > -0.08) alt += 0.0002967 / Math.tan(alt + 0.00312536 / (alt + 0.08901179));   // air bends low sunlight up
+      const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));
+      return { alt: alt / rad, az: (az / rad + 180 + 360) % 360 };   // degrees; az = compass bearing (0 = north)
+    };
+  })();
+  // Colors along the sun's height (degrees): deep night -> twilight -> sunrise/sunset -> day
+  const SKY_STOPS = [
+    [-18, '#070B18', '#121A30', '#7E93C8', 0.08],
+    [-10, '#101A36', '#2A3352', '#8EA0D0', 0.10],
+    [-4,  '#2B3F70', '#6E5A7A', '#B49AC0', 0.16],
+    [0,   '#4F6FA6', '#E0907A', '#FFA36B', 0.24],
+    [4,   '#7FA2D2', '#F4B884', '#FFC08A', 0.30],
+    [10,  '#A6C4E6', '#F1D9BE', '#FFE2C2', 0.34],
+    [25,  '#C2D8EE', '#EFE6DA', '#FFF6EA', 0.38],
+    [90,  '#C9DBEA', '#EFE9E1', '#FFFFFF', 0.40],
+  ];   // [sun height, sky, horizon, light color, light strength]
+  const hex2 = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const mixHex = (a, b, t) => '#' + hex2(a).map((v, i) => Math.round(v + (hex2(b)[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  function skyAt(alt) {
+    let i = 0; while (i < SKY_STOPS.length - 2 && alt > SKY_STOPS[i + 1][0]) i++;
+    const a = SKY_STOPS[i], b = SKY_STOPS[i + 1], t = Math.max(0, Math.min(1, (alt - a[0]) / (b[0] - a[0])));
+    return { sky: mixHex(a[1], b[1], t), horizon: mixHex(a[2], b[2], t), light: mixHex(a[3], b[3], t), strength: a[4] + (b[4] - a[4]) * t };
+  }
+  // Portland clock time -> real moment (so the panel reads Portland time wherever you are)
+  const PDX_TZ = 'America/Los_Angeles';
+  function pdxMoment(ymd, minutes) {
+    const [y, m, d] = ymd.split('-').map(Number), guess = Date.UTC(y, m - 1, d, 0, minutes);
+    const off = (t) => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: PDX_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+      return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - t; };
+    return new Date(guess - off(guess - off(guess)));
+  }
+  const pdxParts = (date) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: PDX_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(date).map((x) => [x.type, x.value]));
+    return { ymd: `${p.year}-${p.month}-${p.day}`, min: +p.hour * 60 + +p.minute };
+  };
+  const sunState = { live: true, when: new Date() };
+  let sunTimer = 0, shadowTimer = 0;
+
+  function sunApply() {
+    if (!map.getLayer('hillshade')) return;
+    const theme = themeNow(), c = PALETTE[theme];
+    if (!is3D) {   // back to the fixed look of the flat map
+      map.setLight({ anchor: 'map', position: [1.3, 315, 40], color: '#FFFFFF', intensity: theme === 'dark' ? 0.25 : 0.35 });
+      map.setSky({ 'sky-color': c.sky, 'horizon-color': c.horizon, 'fog-color': c.background, 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85, 'atmosphere-blend': 0 });
+      map.setPaintProperty('hillshade', 'hillshade-illumination-direction', 315);
+      map.setPaintProperty('night-tint', 'background-opacity', 0);
+      map.setPaintProperty('building-shadows', 'fill-opacity', 0);
+      map.getSource('shadows')?.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    if (sunState.live) sunState.when = new Date();
+    const ctr = map.getCenter(), sun = SUN(sunState.when, ctr.lat, ctr.lng), k = skyAt(sun.alt), dark = theme === 'dark';
+    const sky = dark ? mixHex(k.sky, '#000000', 0.45) : k.sky, horizon = dark ? mixHex(k.horizon, '#000000', 0.4) : k.horizon;
+    map.setSky({ 'sky-color': sky, 'horizon-color': horizon, 'fog-color': mixHex(c.background, horizon, 0.35),
+      'sky-horizon-blend': 0.55, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85, 'atmosphere-blend': 0 });
+    // light on 3D buildings comes from the sun (from overhead-ish at night, dim and cool)
+    const up = sun.alt > 0;
+    map.setLight({ anchor: 'map', color: k.light, intensity: k.strength * (dark ? 0.75 : 1),
+      position: [1.5, up ? sun.az : 180, up ? Math.max(5, 90 - sun.alt) : 25] });
+    map.setPaintProperty('hillshade', 'hillshade-illumination-direction', up ? sun.az : 315);
+    // night wash: none in daylight, fading in through twilight
+    const night = Math.max(0, Math.min(1, (2 - sun.alt) / 14));
+    map.setPaintProperty('night-tint', 'background-opacity', night * (dark ? 0.25 : 0.38));
+    updateShadows(sun);
+    sunPanel?.refresh(sun);
+  }
+
+  // Shadow of each building on flat ground: the footprint swept away from the sun by height / tan(sun height)
+  function hull(pts) {   // convex hull (monotone chain)
+    pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], hi = [];
+    for (const p of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
+    hi.pop(); lo.pop(); const h = lo.concat(hi); h.push(h[0]); return h;
+  }
+  function updateShadows(sun) {
+    const src = map.getSource('shadows'); if (!src) return;
+    const on = is3D && sun.alt > 0.5 && map.getZoom() >= ZOOM.buildings;
+    map.setPaintProperty('building-shadows', 'fill-opacity', on ? Math.min(1, sun.alt / 6) * (themeNow() === 'dark' ? 0.35 : 0.22) : 0);
+    if (!on) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
+    const lat = map.getCenter().lat, mLng = 1 / (111320 * Math.cos(lat * Math.PI / 180)), mLat = 1 / 110540;
+    const reach = Math.min(12, 1 / Math.tan(sun.alt * Math.PI / 180));    // shadow length per meter of height (capped)
+    const dx = -Math.sin(sun.az * Math.PI / 180) * reach * mLng, dy = -Math.cos(sun.az * Math.PI / 180) * reach * mLat;
+    const b = map.getBounds(), out = [];
+    for (const f of map.querySourceFeatures('buildings', { sourceLayer: 'buildings' })) {
+      if (out.length >= 45000) break;
+      const g = f.geometry, h = f.properties.h || 4;
+      const rings = g.type === 'Polygon' ? [g.coordinates[0]] : g.type === 'MultiPolygon' ? g.coordinates.map((p) => p[0]) : [];
+      for (const r of rings) {
+        if (!r?.length || !b.contains(r[0])) continue;
+        const pts = []; for (const [x, y] of r) { pts.push([x, y], [x + dx * h, y + dy * h]); }
+        out.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [hull(pts)] } });
+      }
+    }
+    src.setData({ type: 'FeatureCollection', features: out });
+  }
+  function sunLoop(on) {
+    clearInterval(sunTimer);
+    if (on) sunTimer = setInterval(() => { if (sunState.live) sunApply(); }, 60000);
+  }
+  map.on('moveend', () => { if (is3D) { clearTimeout(shadowTimer); shadowTimer = setTimeout(sunApply, 120); } });
+  map.on('style.load', () => sunApply());
+
+  // Sun panel: a sun button under 3D (only in 3D) opens a small time & date picker; "Now" goes back to the live clock
+  let sunPanel = null;
+  class SunControl {
+    onAdd() {
+      const wrap = document.createElement('div');
+      wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group sun-ctrl';
+      wrap.innerHTML = `<button type="button" aria-label="Sun and time of day" aria-expanded="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button>
+        <div class="sun-pop" hidden>
+          <div class="sun-top"><b class="sun-time"></b><span class="sun-info"></span></div>
+          <input class="sun-slider" type="range" min="0" max="1435" step="5" aria-label="Time of day">
+          <div class="sun-row"><input class="sun-date" type="date" aria-label="Date"><button type="button" class="sun-now">Now</button></div>
+        </div>`;
+      const btn = wrap.querySelector('button'), pop = wrap.querySelector('.sun-pop'), slider = wrap.querySelector('.sun-slider'),
+        dateIn = wrap.querySelector('.sun-date'), nowBtn = wrap.querySelector('.sun-now'), tEl = wrap.querySelector('.sun-time'), info = wrap.querySelector('.sun-info');
+      btn.onclick = () => { pop.hidden = !pop.hidden; btn.setAttribute('aria-expanded', !pop.hidden); if (!pop.hidden) this.refresh(); };
+      const pick = () => { sunState.live = false; sunState.when = pdxMoment(dateIn.value, +slider.value); sunApply(); };
+      slider.oninput = pick; dateIn.onchange = () => { if (dateIn.value) pick(); };
+      nowBtn.onclick = () => { sunState.live = true; sunApply(); };
+      this.refresh = (sun) => {
+        const p = pdxParts(sunState.when);
+        if (document.activeElement !== slider) slider.value = p.min;
+        if (document.activeElement !== dateIn) dateIn.value = p.ymd;
+        tEl.textContent = sunState.when.toLocaleTimeString('en-US', { timeZone: PDX_TZ, hour: 'numeric', minute: '2-digit' });
+        sun = sun || SUN(sunState.when, map.getCenter().lat, map.getCenter().lng);
+        info.textContent = sun.alt > 0 ? `Sun ${Math.round(sun.alt)}° high` : sun.alt > -6 ? 'Twilight' : 'Night';
+        nowBtn.classList.toggle('on', sunState.live);
+      };
+      // A press anywhere outside closes it (like the layers panel); a map tap that closes it doesn't select anything
+      document.addEventListener('pointerdown', (ev) => {
+        if (!pop.hidden && !wrap.contains(ev.target)) { pop.hidden = true; btn.setAttribute('aria-expanded', false); }
+      });
+      this.wrap = wrap; sunPanel = this;
+      return wrap;
+    }
+    onRemove() {}
+  }
+  if (!EMBED) map.addControl(new SunControl(), 'top-right');
   // Press and hold (phones) / right-click (computers): save a place to explore
   let pressedAt = -1e9, holdTimer = 0, holdStart = null;
   const cancelHold = () => { clearTimeout(holdTimer); holdStart = null; };
