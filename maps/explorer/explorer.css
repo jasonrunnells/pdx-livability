@@ -1157,3 +1157,32 @@ body.map-3d .sun-ctrl { display: block; }
   .maplibregl-ctrl-top-right .maplibregl-ctrl-group .sun-pop button.sun-now { border-color: rgba(255,255,255,.18); }
   .maplibregl-ctrl-top-right .maplibregl-ctrl-group .sun-pop button.sun-now:hover { background: rgba(255,255,255,.08); }
 }
+
+/* 3D options panel (opens from the sliders button under 3D): switches + sun & time */
+.sun-pop .opt-head { font-weight: 700; font-size: 15px; margin: 0 0 6px; }
+.sun-pop .opt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 14px; cursor: pointer; }
+.sun-pop .opt-sw { appearance: none; -webkit-appearance: none; width: 38px; height: 22px; border-radius: 11px; background: #C9CDD3; position: relative; cursor: pointer; transition: background .15s; flex: none; margin: 0; }
+.sun-pop .opt-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #FFF; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.sun-pop .opt-sw:checked { background: #2563EB; }
+.sun-pop .opt-sw:checked::after { transform: translateX(16px); }
+.sun-pop .opt-sep { height: 1px; background: rgba(0,0,0,.08); margin: 8px 0 10px; }
+@media (prefers-color-scheme: dark) {
+  .sun-pop .opt-sw { background: #4A5058; }
+  .sun-pop .opt-sep { background: rgba(255,255,255,.1); }
+}
+
+/* 3D group: "3D" on top; when 3D is on the group grows to reveal the 3D options (sliders) button right under it */
+.maplibregl-ctrl-top-right .view3d-ctrl { position: relative; overflow: visible; }
+.maplibregl-ctrl-top-right .view3d-ctrl button.b3d { border-radius: 11px; transition: border-radius .2s; }
+body.map-3d .maplibregl-ctrl-top-right .view3d-ctrl button.b3d { border-radius: 11px 11px 0 0; }
+.maplibregl-ctrl-top-right .view3d-ctrl button.b3d.on { background: #2563EB; color: #FFFFFF; }
+.maplibregl-ctrl-top-right .view3d-ctrl button.b3d.on:not(:disabled):hover { background: #1D4FD8; color: #FFFFFF; }
+.maplibregl-ctrl-top-right .view3d-ctrl button.opt-btn {
+  height: 0; opacity: 0; overflow: hidden; border-top: 0 solid var(--ctl-border); color: var(--ctl-ink); border-radius: 0 0 11px 11px;
+  transition: height .22s ease, opacity .18s ease; pointer-events: none; }
+body.map-3d .maplibregl-ctrl-top-right .view3d-ctrl button.opt-btn {
+  height: calc(var(--btn) - 2px); opacity: 1; border-top-width: 1px; pointer-events: auto; }
+.view3d-ctrl .opt-btn svg.ic { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.maplibregl-ctrl-top-right .view3d-ctrl button.opt-btn[aria-expanded="true"] { color: #2563EB; }
+.view3d-ctrl .sun-pop { top: calc(var(--btn) - 2px); }
+@media (prefers-color-scheme: dark) { .maplibregl-ctrl-top-right .view3d-ctrl button.opt-btn[aria-expanded="true"] { color: #9DBBFF; } }

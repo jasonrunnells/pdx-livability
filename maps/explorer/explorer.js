@@ -36,6 +36,7 @@
   // open data terms (public domain, PDDL). Every load starts on the normal map; ?aerial=1 in the address starts in aerial.
   let AERIAL = new URLSearchParams(location.search).has('aerial');
   const TREE_LAYERS = ['trees-3d-treesW', 'trees-3d-treesE'];
+  let TREES_ON = true, SHADOWS_ON = true;   // 3D options (3D panel): trees and building shadows on/off
   let is3D = false;              // 3D view: tilted map, raised hills and buildings (button under the zoom controls)
   const EXAGGERATE = 1.8;        // how much the hills are stretched in 3D (was 1.4)
   // Hill shading strength by zoom: a bit stronger than before on the flat map, stronger still in 3D
@@ -534,7 +535,7 @@
         /* 3D trees (3D view only): trunk + crown tiers per tree from LiDAR treetops, all of Metro.
            s: 0-2 leafy greens, 3-4 evergreen greens, 9 trunk. b/h: bottom/top in meters. Two sources (west/east). */
         ...['treesW', 'treesE'].map((src) => ({ id: 'trees-3d-' + src, type: 'fill-extrusion', source: src, 'source-layer': 'trees', minzoom: ZOOM.buildings,
-          layout: { visibility: is3D ? 'visible' : 'none' },
+          layout: { visibility: is3D && TREES_ON ? 'visible' : 'none' },
           paint: {
             'fill-extrusion-color': ['match', ['get', 's'],
               9, theme === 'dark' ? '#4A3A2C' : '#7A5C42',
@@ -2277,11 +2278,11 @@
     is3D = on;
     btn3d?.classList.toggle('on', on); btn3d?.setAttribute('aria-pressed', on);
     document.body.classList.toggle('map-3d', on);   // shows the sun button
-    if (!on && sunPanel) { sunPanel.wrap.querySelector('.sun-pop').hidden = true; sunState.live = true; }
+    if (!on && sunPanel) { sunPanel.pop.hidden = true; sunPanel.btn.setAttribute('aria-expanded', false); sunState.live = true; }
     sunLoop(on);
     if (map.getLayer('buildings')) map.setLayoutProperty('buildings', 'visibility', on || AERIAL ? 'none' : 'visible');
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', on ? 'visible' : 'none');
-    for (const id of TREE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    for (const id of TREE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on && TREES_ON ? 'visible' : 'none');
     if (map.getLayer('hillshade')) map.setPaintProperty('hillshade', 'hillshade-exaggeration', on ? HILL_3D : HILL_FLAT);
     if (on) {
       map.setMaxPitch(MAX_PITCH_3D);
@@ -2328,7 +2329,7 @@
     onAdd() {
       const wrap = document.createElement('div');
       wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group view3d-ctrl';
-      wrap.innerHTML = '<button type="button" aria-label="3D view" aria-pressed="false"><span>3D</span></button>';
+      wrap.innerHTML = '<button type="button" class="b3d" aria-label="3D view" aria-pressed="false"><span>3D</span></button>';
       btn3d = wrap.querySelector('button');
       btn3d.onclick = () => set3D(!is3D);
       return wrap;
@@ -2430,7 +2431,7 @@
   }
   function updateShadows(sun) {
     const src = map.getSource('shadows'); if (!src) return;
-    const on = is3D && sun.alt > 0.5 && map.getZoom() >= ZOOM.buildings;
+    const on = is3D && SHADOWS_ON && sun.alt > 0.5 && map.getZoom() >= ZOOM.buildings;
     const shade = on ? Math.min(1, sun.alt / 10) * (themeNow() === 'dark' ? 0.32 : 0.2) : 0;   // fades as the sun gets low
     map.setPaintProperty('building-shadows', 'fill-opacity', ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.15, shade]);   // appears with the buildings
     if (!on) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
@@ -2464,8 +2465,12 @@
     onAdd() {
       const wrap = document.createElement('div');
       wrap.className = 'maplibregl-ctrl maplibregl-ctrl-group sun-ctrl';
-      wrap.innerHTML = `<button type="button" aria-label="Sun and time of day" aria-expanded="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button>
+      wrap.innerHTML = `<button type="button" aria-label="3D options" aria-expanded="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></button>
         <div class="sun-pop" hidden>
+          <div class="opt-head">3D options</div>
+          <label class="opt-row"><span>Trees</span><input type="checkbox" class="opt-sw" data-opt="trees" checked></label>
+          <label class="opt-row"><span>Building shadows</span><input type="checkbox" class="opt-sw" data-opt="shadows" checked></label>
+          <div class="opt-sep"></div>
           <div class="sun-top"><b class="sun-time"></b><span class="sun-info"></span></div>
           <input class="sun-slider" type="range" min="0" max="1435" step="5" aria-label="Time of day">
           <div class="sun-row"><input class="sun-date" type="date" aria-label="Date"><button type="button" class="sun-now">Now</button></div>
@@ -2476,6 +2481,12 @@
       const pick = () => { sunState.live = false; sunState.when = pdxMoment(dateIn.value, +slider.value); sunApply(); };
       slider.oninput = pick; dateIn.onchange = () => { if (dateIn.value) pick(); };
       nowBtn.onclick = () => { sunState.live = true; sunApply(); };
+      wrap.querySelectorAll('.opt-sw').forEach((sw) => sw.onchange = () => {
+        if (sw.dataset.opt === 'trees') {
+          TREES_ON = sw.checked;
+          for (const id of TREE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', is3D && TREES_ON ? 'visible' : 'none');
+        } else { SHADOWS_ON = sw.checked; sunApply(); }
+      });
       this.refresh = (sun) => {
         const p = pdxParts(sunState.when);
         if (document.activeElement !== slider) slider.value = p.min;
@@ -2487,14 +2498,19 @@
       };
       // A press anywhere outside closes it (like the layers panel); a map tap that closes it doesn't select anything
       document.addEventListener('pointerdown', (ev) => {
-        if (!pop.hidden && !wrap.contains(ev.target)) { pop.hidden = true; btn.setAttribute('aria-expanded', false); }
+        if (!pop.hidden && !btn.contains(ev.target) && !pop.contains(ev.target)) { pop.hidden = true; btn.setAttribute('aria-expanded', false); }
       });
-      this.wrap = wrap; sunPanel = this;
+      this.wrap = wrap; this.pop = pop; this.btn = btn; sunPanel = this;
       return wrap;
     }
     onRemove() {}
   }
-  if (!EMBED) map.addControl(new SunControl(), 'top-right');
+  // The 3D options button lives inside the 3D button's group: turning 3D on grows the group to reveal it below "3D"
+  if (!EMBED && btn3d) {
+    const sc = new SunControl(); sc.onAdd();
+    sc.btn.classList.add('opt-btn');
+    btn3d.parentElement.append(sc.btn, sc.pop);
+  }
   if (!EMBED) map.addControl(new PinControl(), 'top-right');   // last in the stack: easy to reach
   // Press and hold (phones) / right-click (computers): save a place to explore
   let pressedAt = -1e9, holdTimer = 0, holdStart = null;
