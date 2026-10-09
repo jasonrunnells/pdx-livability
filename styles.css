@@ -668,6 +668,7 @@ a.brand { color: inherit; text-decoration: none; }
 .hd-body { display: grid; gap: 3px; padding: 11px 13px 13px; }
 .hd-r1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .hd-r1 .price { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.hd-mo { margin-top: 1px; font-size: 13px; font-weight: 650; color: var(--ink-soft, #62676C); }
 .hd-rate { display: inline-flex; align-items: center; gap: 3px; font-size: 13.5px; font-weight: 750; }
 .hd-rate svg, .stats .star { width: 14px; height: 14px; fill: #F7B230; }
 .hd-body .addr { font-size: 14px; font-weight: 650; }

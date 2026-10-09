@@ -168,7 +168,8 @@ async function enrich() {
     if (info.has(r.id) || r.lat == null) continue;
     const h = hoods && featureAt(hoods, r.lng, r.lat), c = cities && featureAt(cities, r.lng, r.lat);
     const check = await schoolCheck(r.lng, r.lat).catch(() => null);
-    info.set(r.id, { hood: h?.Name, hoodId: h?.RegionID, city: c?.NAME, county: await countyValue(r.address), check });
+    const row = await addrRow(r.address);
+    info.set(r.id, { hood: h?.Name, hoodId: h?.RegionID, city: c?.NAME, county: row && row[5] > 0 ? row[5] : null, fin: await finInputs(row), check });
   }
   fillCities(); render();
 }
@@ -232,14 +233,23 @@ const WORDS = { street: 'st', avenue: 'ave', av: 'ave', road: 'rd', drive: 'dr',
   northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw', saint: 'st', mount: 'mt', fort: 'ft' };
 const sNorm = (v) => String(v ?? '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 -]/g, ' ').replace(/-/g, ' ')
   .split(/\s+/).filter(Boolean).map((w) => WORDS[w] || w).join(' ');
-async function countyValue(address) {
+async function addrRow(address) {
   const parts = String(address || '').split(','), street = sNorm(parts[0].replace(/\s*(#|\bapt\b|\bunit\b|\bste\b).*$/i, '')), n0 = street.split(' ')[0];
   if (!/^\d/.test(n0)) return null;
   const rows = await getJSON(DATA + 'addr/' + n0.slice(0, 2) + '.json').catch(() => []);
   const city = sNorm((parts[1] || '').trim()), hits = rows.filter((x) => sNorm(x[0]) === street);
-  const row = hits.find((x) => !city || sNorm(x[1]) === city) || hits[0];
-  return row && row[5] > 0 ? row[5] : null;
+  return hits.find((x) => !city || sNorm(x[1]) === city) || hits[0] || null;
 }
+// Monthly cost inputs for a home: its county tax estimate and city (tax files are built by maps/explorer/tools/tax.py)
+async function finInputs(row) {
+  if (!row) return null;
+  const a = String(row[0]).toLowerCase(), d = await getJSON(DATA + 'tax/' + a.split(' ')[0].slice(0, 3) + '.json').catch(() => null);
+  const t = d && d[a + '|' + row[2]];
+  return { taxYr: t ? t[0] : 0, city: row[1] || '' };
+}
+const FIN = window.PDXFinance || null;
+if (FIN) { FIN.load(sb); FIN.onChange(() => render()); }
+const monthly = (r) => { const x = info.get(r.id); const c = FIN && +r.price > 0 ? FIN.calc({ price: +r.price, taxYr: x?.fin?.taxYr, sqft: +r.sqft, city: x?.fin?.city || x?.city }) : null; return c ? c.total : null; };
 
 // "Best value": each home is scored against your other saved homes on three things, then the scores are averaged:
 //   1. price per sq ft (lower is better)
@@ -276,6 +286,7 @@ function filtered() {
                rating: (a, b) => (b.rating || 0) - (a.rating || 0), sqft: (a, b) => (b.sqft || 0) - (a.sqft || 0),
                new: (a, b) => new Date(b.created_at) - new Date(a.created_at),
                old: (a, b) => new Date(a.created_at) - new Date(b.created_at),
+               monthly: (a, b) => (monthly(a) ?? 9e9) - (monthly(b) ?? 9e9),
                value: null };
   if (F.sort === 'value') { const sc = valueScores(list); return list.sort((a, b) => sc.get(b.id) - sc.get(a.id)); }
   return list.sort(by[F.sort] || by.new);
@@ -301,6 +312,7 @@ function card(r) {
       ${specs ? `<div class="specbar">${specs}</div>` : ''}${(r.photos || []).length > 1 ? `<span class="hd-pcount" title="${r.photos.length} photos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5a2 2 0 0 1 2-2h1.8l1.4-2h4.6l1.4 2h1.8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.25"/></svg>${r.photos.length}</span>` : ''}</div>
     <div class="hd-body">
       <div class="hd-r1"><span class="price">${r.price ? usd(r.price) : 'No price'}</span>${+r.rating > 0 ? `<span class="hd-rate">${STAR}${(+r.rating).toFixed(1)}</span>` : ''}</div>
+      ${(() => { const m = monthly(r); return m ? `<div class="hd-mo">${usd(m)}/mo est.</div>` : ''; })()}
       <div class="addr">${esc(street)}</div>
       <div class="hd-place">${[x?.hood ? `<span class="nb-hood">${esc(x.hood)}</span>` : '', x?.city ? `<span class="nb-city">${esc(x.city)}</span>` : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
     </div>
@@ -377,4 +389,5 @@ function closePanel() {
 scrim.onclick = closePanel;
 addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
 addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.type === 'pdx-close-card') closePanel(); });
+addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.type === 'pdx-finance' && FIN) FIN.reload().then(() => render()); });
 })();

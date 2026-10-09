@@ -200,6 +200,8 @@
   const sb = window.supabase
     ? window.supabase.createClient('https://qstztxydqhuahgivpztx.supabase.co', 'sb_publishable_5MfonGtWBM7R3rgYtEDdkg_TnUOeWJx')
     : null;
+  const FIN = window.PDXFinance || null;   // monthly cost math + shared payment settings (finance.js)
+  if (FIN) FIN.load(sb);
   let homesData = null;
   const homesRows = new Map();   // full rows by id, for the home card
   const homeFeature = (r) => ({ type: 'Feature', id: r.id, geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
@@ -1190,6 +1192,7 @@
     clearSelection();
   }
   sheet.querySelector('.x').onclick = closeSheet;
+  sheetBody.addEventListener('click', (e) => { if (e.target.closest('[data-fin="settings"]')) { e.stopPropagation(); openFinSettings(); } }, true);
   // Opening a dropdown (Property, Schools, Area…) scrolls it up to the top of the card
   let userToggled = null;   // only react to taps, not to dropdowns that start open
   sheetBody.addEventListener('click', (e) => { const sm = e.target.closest('summary'); userToggled = sm ? sm.parentElement : null; }, true);
@@ -1441,6 +1444,81 @@
   })();
   const ord = (v) => (num(v) == null ? '–' : Math.round(v) + '%');
 
+  /* ---------- Financing (monthly cost) ---------- */
+  // ctx: { price, est (true when the price is an estimate), taxYr, sqft, city }. The last one shown is kept so a settings
+  // change can redraw it.
+  let finCtx = null;
+  async function salePrice(p) {   // likely price for a lot with no listing: county value x its ZIP's sale-to-value ratio
+    const val = num(p.total) || num(p.total24) || num(p.total23); if (!val) return null;
+    const r = await getJSON('data/sale_ratio.json').catch(() => ({}));
+    return Math.round(val * (r[String(p.zip || '').trim()] || r._all || 1) / 1000) * 1000;
+  }
+  function finHTML(ctx) {
+    if (!FIN) return '';
+    if (!ctx || !(ctx.price > 0)) return '<div class="sub pad">Add a list price to see the monthly cost.</div>';
+    const c = FIN.calc(ctx), S = FIN.get(); if (!c) return '';
+    const k = (v) => '$' + Math.round(v / 1000).toLocaleString() + 'k';
+    const rows = [
+      ['Loan payment<small class="below">' + k(c.loan) + ' at ' + c.ratePct.toFixed(2) + '% · ' + c.term + ' yrs' + (c.jumbo ? ' · jumbo' : '') + '</small>', usd(c.pay)],
+      ['Property tax<small class="below">County estimate</small>', ctx.taxYr ? usd(c.tax) : '—'],
+      ['Home insurance<small class="below">' + (c.cover ? 'Rebuild ' + k(c.cover) + (ctx.city ? ' · ' + esc(ctx.city) : '') : ctx.est ? 'No house on record' : 'Needs sq ft') + '</small>', c.ins ? usd(c.ins) : '—'],
+      ['PMI<small class="below">' + (c.pmi ? (c.over97 ? 'Down payment under 3%' : 'Ends after ' + c.pmiEnd + ' payments') : '20%+ down: none') + '</small>', c.pmi ? usd(c.pmi) : '$0'],
+    ];
+    return `<div class="fin-top"><div class="pval"><b>${usd(c.total)}/mo</b><span>${ctx.est ? 'Estimated price ' : 'Price '}${usd(c.price)} · <span class="nw">${c.down > 0 ? usd(c.down) + ' down (' + Math.round((c.down / c.price) * 100) + '%)' : 'No down payment'}</span></span></div>
+      <button type="button" class="fin-set" data-fin="settings" aria-label="Payment settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Settings</button></div>
+      ${kv(rows)}
+      ${FIN.chartSVG(c)}
+      ${ctx.est ? '<div class="sub pad">No listing, so the price is the county value adjusted for recent sales nearby.</div>' : ''}`;
+  }
+  function showFin(ctx) {
+    finCtx = ctx;
+    const el = sheetBody.querySelector('[data-sec="finance"] .fin-body');
+    if (el) { el.innerHTML = finHTML(ctx); FIN.wireChart(el); }
+  }
+  if (FIN) FIN.onChange(() => { if (finCtx) showFin(finCtx); try { parent.postMessage({ type: 'pdx-finance' }, location.origin); } catch { /* not framed */ } });
+
+  // Payment settings panel (shared by both of you)
+  const FIN_FIELDS = [
+    ['down', 'Down payment', '$', 1000], ['term', 'Loan length', 'yrs', null], ['rate30', '30-year rate', '%', 0.01], ['rate15', '15-year rate', '%', 0.01],
+    ['rateJumbo', 'Jumbo rate (loans over $832,750)', '%', 0.01], ['rebuild', 'Rebuild cost per sq ft', '$', 5],
+    ['pmi85', 'PMI, 15–20% down', '%', 0.01], ['pmi90', 'PMI, 10–15% down', '%', 0.01], ['pmi95', 'PMI, 5–10% down', '%', 0.01], ['pmi97', 'PMI, 3–5% down', '%', 0.01]];
+  const finNum = (v) => (String(v).replace(/[^0-9.]/g, '') === '' ? NaN : +String(v).replace(/[^0-9.]/g, ''));
+  const finFmt = (v, unit) => (!Number.isFinite(+v) ? '' : unit === '$' ? Math.round(v).toLocaleString('en-US') : String(+(+v).toFixed(3)));
+  function openFinSettings() {
+    if (!FIN || document.querySelector('.fin-modal')) return;
+    const S = FIN.get(), D = FIN.DEFAULTS;
+    const field = ([key, label, unit, step]) => key === 'term'
+      ? `<label class="fin-f"><span>${label}</span><select class="fin-sel" id="fin-${key}"><option value="30"${+S.term !== 15 ? ' selected' : ''}>30 years</option><option value="15"${+S.term === 15 ? ' selected' : ''}>15 years</option></select></label>`
+      : `<label class="fin-f"><span>${label}<small>Default ${unit === '$' ? usd(D[key]) : D[key] + unit}</small></span><span class="fin-in">${unit === '$' ? '<i>$</i>' : ''}<input id="fin-${key}" type="text" inputmode="decimal" autocomplete="off" data-step="${step}" data-unit="${unit}" value="${finFmt(S[key], unit)}">${unit === '%' ? '<i class="u-end">%</i>' : ''}<span class="fin-step"><button type="button" tabindex="-1" data-d="1" aria-label="Increase"><svg viewBox="0 0 12 8"><path d="M2 6l4-4 4 4"/></svg></button><button type="button" tabindex="-1" data-d="-1" aria-label="Decrease"><svg viewBox="0 0 12 8"><path d="M2 2l4 4 4-4"/></svg></button></span></span></label>`;
+    const box = document.createElement('div');
+    box.className = 'fin-modal';
+    box.innerHTML = `<div class="fin-panel" role="dialog" aria-modal="true" aria-labelledby="fin-title">
+      <div class="fin-head"><h3 id="fin-title">Payment settings</h3><button type="button" class="fin-x" aria-label="Close">×</button></div>
+      <p class="fin-note">Changes update every home&#39;s monthly cost.</p>
+      <div class="fin-grid">${FIN_FIELDS.map(field).join('')}</div>
+      <div class="fin-acts"><button type="button" class="link fin-reset">Reset to defaults</button><span></span><button type="button" class="btn alt fin-cancel">Cancel</button><button type="button" class="btn fin-save">Save</button></div></div>`;
+    document.body.appendChild(box);
+    const close = () => box.remove();
+    box.addEventListener('click', (e) => { if (e.target === box) close(); });
+    box.querySelector('.fin-x').onclick = close; box.querySelector('.fin-cancel').onclick = close;
+    const done = (error, msg) => { close(); toast(error ? 'Saved on this device only. Shared settings aren\'t set up yet (finance_settings table).' : msg); };
+    box.querySelector('.fin-reset').onclick = async () => { const { error } = await FIN.reset(); done(error, 'Payment settings reset to defaults'); };
+    box.querySelector('.fin-save').onclick = async () => {
+      const next = { ...FIN.get() };
+      for (const [key] of FIN_FIELDS) { const v = finNum(box.querySelector('#fin-' + key).value); if (Number.isFinite(v) && v >= 0) next[key] = v; }
+      const { error } = await FIN.save(next); done(error, 'Payment settings saved');
+    };
+    // Dollar fields show commas as you type; the small arrows step each field up or down
+    box.querySelectorAll('.fin-in input').forEach((inp) => {
+      if (inp.dataset.unit === '$') inp.addEventListener('input', () => { const end = inp.value.length - inp.selectionEnd; inp.value = finFmt(finNum(inp.value), '$'); const at = Math.max(0, inp.value.length - end); inp.setSelectionRange(at, at); });
+      inp.parentElement.querySelectorAll('.fin-step button').forEach((b) => b.addEventListener('click', (e) => {
+        e.preventDefault(); const st = +inp.dataset.step, v = (finNum(inp.value) || 0) + st * +b.dataset.d;
+        inp.value = finFmt(Math.max(0, Math.round(v / st) * st), inp.dataset.unit);
+      }));
+    });
+    box.querySelector('input,select')?.focus();
+  }
+
   // Estimated property tax for a lot, from data/tax/<first 3 chars of house number>.json (built by tools/tax.py):
   // assessed value x the local tax rate. Row: [tax per year, assessed value, rate x100, county, code area, account, city if different, accounts at this address]
   async function taxFor(p) {
@@ -1680,6 +1758,7 @@
       <div class="facts"><div><span>Beds</span><b>${esc(r.beds ?? '–')}</b></div><div><span>Baths</span><b>${esc(r.baths ?? '–')}</b></div><div><span>Sq ft</span><b>${r.sqft ? r.sqft.toLocaleString() : '–'}</b></div></div>
       ${schoolStrip(sa)}${schoolRuleNote(sa)}</div>
     ${(photos.length || r.note) ? `<div class="sec">${photos.length ? `<div class="photowrap"><div class="photos">${photos.map((u) => `<img loading="lazy" alt="Photo" src="${esc(u)}">`).join('')}</div>${photos.length > 1 ? '<button type="button" class="parrow prev" aria-label="Previous photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg></button><button type="button" class="parrow next" aria-label="Next photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>' : ''}</div>` : ''}${r.note ? `<button type="button" class="note clamp" aria-expanded="false">${esc(r.note)}</button>` : ''}</div>` : ''}
+    ${FIN ? `<details class="sec" data-sec="finance" open><summary>Financing</summary><div class="fin-body"><div class="sub pad">${r.price ? 'Loading…' : 'Add a list price to see the monthly cost.'}</div></div></details>` : ''}
     <details class="sec" data-sec="property" open><summary>Property</summary><div class="prop-body"><div class="sub pad">Loading…</div></div></details>
     <details class="sec" open><summary>Schools</summary>${schoolsHTML(sa)}</details>
     ${EXTRAS.replaceAll('<details class="sec">', '<details class="sec" open>')}
@@ -1721,6 +1800,8 @@
       if (token !== openToken) return;
       const el = sheetBody.querySelector('[data-sec="property"] .prop-body');
       if (el) { el.innerHTML = propertyHTML(f && f.properties, hood?.Name, { ...ctx, typical, tax }); el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' }); }
+      const lp = f && f.properties;
+      if (ctx.listPrice) showFin({ price: ctx.listPrice, taxYr: tax ? tax[0] : 0, sqft: ctx.homeSqft || num(lp?.sqft), city: lp?.city || '' });
       if (f) highlightLot(f.properties);
     };
     if (map.getZoom() >= 15 && map.areTilesLoaded()) run(); else map.once('idle', run);
@@ -1736,6 +1817,7 @@
     const sa = await schoolsAt(r.lng, r.lat);
     const { html, hood } = await homeCard(r, sa);
     if (token !== openToken) return;
+    finCtx = null;
     openSheet(html, { kind: 'home' });
     sheetBody.onclick = (e) => homeAction(e, id);
     fillProperty([r.lng, r.lat], hood, token, { listPrice: num(r.price), homeSqft: num(r.sqft), address: r.address, homeId: r.id });
@@ -1747,16 +1829,19 @@
     cameraToLot(f);
     const [hoods, sa] = await Promise.all([getJSON('data/neighborhoods.geojson').catch(() => null), schoolsAt(ll[0], ll[1])]);
     const hood = hoods && featureAt(hoods, ll[0], ll[1]);
-    const [typical, tax] = await Promise.all([typicalFor(hood), taxFor(p)]);
+    const [typical, tax, est] = await Promise.all([typicalFor(hood), taxFor(p), salePrice(p)]);
     if (token !== openToken) return;
     const val = num(p.total) || num(p.total24) || num(p.total23);
+    const lotFin = est ? { price: est, est: true, taxYr: tax ? tax[0] : 0, sqft: num(p.sqft), city: p.city || '' } : null;
     openSheet(`<div class="sec"><h2 class="addr">${esc(p.addr || 'Lot')}</h2><div class="sub">${hood ? `<span class="nb-hood">${esc(hood.Name)}</span> · ` : ''}${esc([p.city, p.zip].filter(Boolean).join(' '))}${p.use ? ' · ' + esc(USE[p.use] || p.use) : ''}</div></div>
       <div class="sec"><div class="big">${val ? usd(val) : '–'}</div><div class="sub">County market value</div>${schoolStrip(sa)}</div>
+      ${FIN && lotFin ? `<details class="sec" data-sec="finance"><summary>Financing</summary><div class="fin-body"></div></details>` : ''}
       <details class="sec" open><summary>Property</summary><div class="prop-body">${propertyHTML(p, hood?.Name, { typical, tax })}</div></details>
       <details class="sec"><summary>Schools</summary>${schoolsHTML(sa)}</details>
       ${EXTRAS}
       <div class="foot">${dirs(ll)}</div>`);
     sheetBody.onclick = null;
+    if (lotFin) showFin(lotFin); else finCtx = null;
     fillExtras(ll, token);
   }
   function refreshHomes() {
