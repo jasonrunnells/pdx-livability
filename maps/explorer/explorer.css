@@ -1278,3 +1278,14 @@ body.map-3d .maplibregl-ctrl-top-right .view3d-ctrl button.opt-btn {
 .fin-step button { display: flex; align-items: center; justify-content: center; width: 18px; height: 15px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--ink-soft); cursor: pointer; }
 .fin-step button:hover { background: var(--line); color: var(--ink); }
 .fin-step svg { width: 10px; height: 7px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Financing summary box: total + price/down in its own tinted panel, lined up with the rows below */
+.sheet .fin-top { align-items: center; margin: 2px 0 6px; padding: 12px 12px 12px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-solid)); border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent); }
+.sheet .fin-top .pval { padding: 0; gap: 3px; }
+.sheet .fin-top .pval b { font-size: 26px; line-height: 1.1; }
+.sheet .fin-top .pval span { color: var(--ink-soft); }
+.sheet .fin-top .fin-set { margin-top: 0; }
+/* Summary box v2: neutral grey instead of blue; Settings button gets a clear outline */
+.sheet .fin-top { background: color-mix(in srgb, var(--ink) 5%, var(--surface-solid)); border-color: var(--line); }
+.sheet .fin-top .fin-set { border-color: color-mix(in srgb, var(--ink) 22%, transparent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.sheet .fin-top .fin-set:hover { border-color: var(--ink-soft); }
