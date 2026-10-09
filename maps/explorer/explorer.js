@@ -1441,6 +1441,22 @@
   })();
   const ord = (v) => (num(v) == null ? '–' : Math.round(v) + '%');
 
+  // Estimated property tax for a lot, from data/tax/<first 3 chars of house number>.json (built by tools/tax.py):
+  // assessed value x the local tax rate. Row: [tax per year, assessed value, rate x100, county, code area, account, city if different, accounts at this address]
+  async function taxFor(p) {
+    const a = String((p && p.addr) || '').toLowerCase(), n = a.split(' ')[0];
+    if (!n || !/^\d/.test(n) || !p.zip) return null;
+    const d = await getJSON('data/tax/' + n.slice(0, 3) + '.json').catch(() => null);
+    return (d && d[a + '|' + String(p.zip).trim()]) || null;
+  }
+  function taxHTML(t) {
+    if (!t) return '';
+    const [yr, av, rate, , , , city, many] = t;
+    return `<div class="pval"><b>${usd(yr)}/yr</b><span>${usd(yr / 12)}/mo · estimate</span></div>`
+      + kv([['Assessed value', usd(av)], ['Tax rate (' + (rate / 1000).toFixed(2) + '%)', '$' + (rate / 100).toFixed(2) + ' per $1,000'], ['Taxed by', city || null],
+          ['Note', many ? many + ' tax accounts at this address; middle one shown' : null]]);
+  }
+
   // Property facts from a lot (tile feature properties)
   // Values are the county's "real market value" estimates: 2025 is the latest, 2024 and 2023 are the two years before.
   function propertyHTML(p, hoodName, ctx = {}) {
@@ -1477,6 +1493,7 @@
           ['Value since sale', num(p.saleprice) > 100 && latestVal ? pctTxt(latestVal, p.saleprice) : null]]) : '<div class="sub pad">No sale on record.</div>')
       + box('County market value', latest ? `<div class="pval"><b>${usd(latest[1])}</b><span>${latest[0]} value${delta != null ? ` · <em class="${delta >= 0 ? 'good' : 'bad'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}% from ${prev[0]}</em>` : ''}</span></div>`
           + kv([['Land', latest[0] === '2025' ? usd(p.land) : null], ['Building', latest[0] === '2025' ? usd(p.bldg) : null], ...years.slice(1).map(([y, v]) => [y + ' value', usd(v)])]) : '<div class="sub pad">No value on record.</div>')
+      + box('Property tax', taxHTML(ctx.tax))
       + box('Building', kv([['Year built', num(p.year) > 1800 ? p.year : null], ['Use', [USE[p.use] || p.use, units].filter(Boolean).join(' · ') || null],
           ['Building area', num(p.sqft) ? sqft(p.sqft) : null], ['Bedrooms', p.beds || null], ['Floors', num(p.floors) ? p.floors : null],
           ['Lot size', lot], ['Neighborhood', hoodName ? `<span class="nb-hood">${esc(hoodName)}</span>` : null]]));
@@ -1700,10 +1717,10 @@
         if (token !== openToken) return;
         if (byAddr) { f = byAddr.f; if (ctx.homeId && byAddr.ll) movePin(ctx.homeId, byAddr.ll); }
       }
-      const typical = await typicalFor(hood);
+      const [typical, tax] = await Promise.all([typicalFor(hood), f ? taxFor(f.properties) : null]);
       if (token !== openToken) return;
       const el = sheetBody.querySelector('[data-sec="property"] .prop-body');
-      if (el) el.innerHTML = propertyHTML(f && f.properties, hood?.Name, { ...ctx, typical });
+      if (el) { el.innerHTML = propertyHTML(f && f.properties, hood?.Name, { ...ctx, typical, tax }); el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' }); }
       if (f) highlightLot(f.properties);
     };
     if (map.getZoom() >= 15 && map.areTilesLoaded()) run(); else map.once('idle', run);
@@ -1712,6 +1729,8 @@
   async function openHome(id) {
     const r = homesRows.get(id); if (!r) return;
     const token = ++openToken;
+    const hn = String(r.address || '').trim().split(' ')[0];
+    if (/^\d/.test(hn)) getJSON('data/tax/' + hn.slice(0, 3) + '.json').catch(() => {});   // start loading the tax file now, so the Property section fills in one go
     select('point', 'pHomes', id);
     cameraToPoint([r.lng, r.lat], 17.5);
     const sa = await schoolsAt(r.lng, r.lat);
@@ -1728,12 +1747,12 @@
     cameraToLot(f);
     const [hoods, sa] = await Promise.all([getJSON('data/neighborhoods.geojson').catch(() => null), schoolsAt(ll[0], ll[1])]);
     const hood = hoods && featureAt(hoods, ll[0], ll[1]);
-    const typical = await typicalFor(hood);
+    const [typical, tax] = await Promise.all([typicalFor(hood), taxFor(p)]);
     if (token !== openToken) return;
     const val = num(p.total) || num(p.total24) || num(p.total23);
     openSheet(`<div class="sec"><h2 class="addr">${esc(p.addr || 'Lot')}</h2><div class="sub">${hood ? `<span class="nb-hood">${esc(hood.Name)}</span> · ` : ''}${esc([p.city, p.zip].filter(Boolean).join(' '))}${p.use ? ' · ' + esc(USE[p.use] || p.use) : ''}</div></div>
       <div class="sec"><div class="big">${val ? usd(val) : '–'}</div><div class="sub">County market value</div>${schoolStrip(sa)}</div>
-      <details class="sec" open><summary>Property</summary><div class="prop-body">${propertyHTML(p, hood?.Name, { typical })}</div></details>
+      <details class="sec" open><summary>Property</summary><div class="prop-body">${propertyHTML(p, hood?.Name, { typical, tax })}</div></details>
       <details class="sec"><summary>Schools</summary>${schoolsHTML(sa)}</details>
       ${EXTRAS}
       <div class="foot">${dirs(ll)}</div>`);
