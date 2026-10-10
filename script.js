@@ -378,7 +378,7 @@ function refresh() {
   saveBtn.disabled = !addrIn.value.trim();
 }
 function resetForm() {
-  form.reset(); picked = null; files = []; sugg = []; autoAddr = ''; checkResult = null; cleared = false; runId++;
+  form.reset(); picked = null; files = []; ph?.clear(); sugg = []; autoAddr = ''; checkResult = null; cleared = false; runId++;
   thumbsEl.innerHTML = ''; results.innerHTML = ''; setHint(''); homeErr.textContent = '';
   checkBox.hidden = true; details.hidden = true; alertBox.hidden = true; refresh();
 }
@@ -490,9 +490,8 @@ addrIn.addEventListener('blur', () => setTimeout(() => { results.innerHTML = '';
 addrIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && sugg.length && results.innerHTML) { e.preventDefault(); results.innerHTML = ''; useAddress(sugg[0]); } });
 
 /* photos */
-const thumbs = () => { thumbsEl.innerHTML = files.map((x, i) => `<img data-i="${i}" alt="Photo ${i + 1} (tap to remove)" src="${URL.createObjectURL(x)}">`).join(''); };
-thumbsEl.onclick = (e) => { const i = e.target.dataset.i; if (i == null) return; files.splice(+i, 1); thumbs(); };
-form.querySelector('input[type=file]').onchange = (e) => { files.push(...e.target.files); e.target.value = ''; thumbs(); };
+var ph = PDXPhotos.editor(thumbsEl, []);   // drag to reorder, × to remove (maps/explorer/photos.js)
+form.querySelector('input[type=file]').onchange = (e) => { ph.add(e.target.files); e.target.value = ''; };
 async function shrink(file, max = 1600, q = 0.8) {
   const img = await createImageBitmap(file, { imageOrientation: 'from-image' }), s = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
   c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
@@ -521,7 +520,7 @@ form.addEventListener('submit', async (ev) => {
   }
   saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
   try {
-    const urls = []; for (const f of files) urls.push(await upload(f));
+    const urls = await ph.urls(upload);
     const rec = { kind: 'home', lat: picked.lat, lng: picked.lng, address: addrIn.value.trim(),
       link: toUrl(form.link.value.trim() || null), price: numOf(form.price.value), beds: numOf(form.beds.value),
       baths: numOf(form.baths.value), sqft: numOf(form.sqft.value), note: form.note.value.trim() || null, photos: urls,

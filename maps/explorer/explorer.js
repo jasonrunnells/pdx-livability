@@ -1932,16 +1932,14 @@
     if (mobile.matches && !sheetFull) expandSheet();   // forms need room to scroll
     const f = sheetBody.querySelector('form'), btn = f.querySelector('.btn'), th = f.querySelector('.pth'), err = f.querySelector('.perr');
     const gv = (n) => f.elements[n]?.value.trim() || '';
-    const thumbs = () => { th.innerHTML = [...pics.map((u, i) => `<img data-p="${i}" src="${esc(u)}">`), ...files.map((x, i) => `<img data-f="${i}" src="${URL.createObjectURL(x)}">`)].join(''); };
-    th.onclick = (e) => { const i = e.target; if (i.dataset.p != null) pics.splice(+i.dataset.p, 1); else if (i.dataset.f != null) files.splice(+i.dataset.f, 1); else return; thumbs(); };
-    f.querySelector('input[type=file]').onchange = (e) => { files.push(...e.target.files); e.target.value = ''; thumbs(); };
-    thumbs();
+    const ph = PDXPhotos.editor(th, pics);   // drag to reorder, × to remove (photos.js)
+    f.querySelector('input[type=file]').onchange = (e) => { ph.add(e.target.files); e.target.value = ''; };
     f.onsubmit = async (ev) => {
       ev.preventDefault(); btn.disabled = true; btn.textContent = 'Saving…'; err.textContent = '';
       try {
-        const urls = []; for (const x of files) urls.push(await upload(x));
+        const photos = await ph.urls(upload);
         const val = (n) => gv(n) || null;
-        const rec = { address: val('address'), link: norm(val('link')), price: num(gv('price')), beds: num(gv('beds')), baths: num(gv('baths')), sqft: num(gv('sqft')), note: val('note'), photos: [...pics, ...urls],
+        const rec = { address: val('address'), link: norm(val('link')), price: num(gv('price')), beds: num(gv('beds')), baths: num(gv('baths')), sqft: num(gv('sqft')), note: val('note'), photos,
           ...(!!f.elements.priority?.checked !== !!o.priority ? { priority: !!f.elements.priority.checked } : {}) };   // only sent when changed
         const { data, error } = await sb.from('places').update(rec).eq('id', o.id).select().single();
         if (error) throw error;
@@ -2362,19 +2360,17 @@
     if (mobile.matches && !sheetFull) expandSheet();
     const f = sheetBody.querySelector('form'), save = f.querySelector('.pf-save'), th = f.querySelector('.pth'), err = f.querySelector('.perr');
     const gv = (n) => f.elements[n]?.value.trim() || '';
-    const thumbs = () => { th.innerHTML = [...pics.map((u, i) => `<img data-p="${i}" src="${esc(u)}">`), ...files.map((x, i) => `<img data-f="${i}" src="${URL.createObjectURL(x)}">`)].join(''); };
-    th.onclick = (e) => { const i = e.target; if (i.dataset.p != null) pics.splice(+i.dataset.p, 1); else if (i.dataset.f != null) files.splice(+i.dataset.f, 1); else return; thumbs(); };
-    f.querySelector('input[type=file]').onchange = (e) => { files.push(...e.target.files); e.target.value = ''; thumbs(); };
-    thumbs();
+    const ph = PDXPhotos.editor(th, pics);   // drag to reorder, × to remove (photos.js)
+    f.querySelector('input[type=file]').onchange = (e) => { ph.add(e.target.files); e.target.value = ''; };
     f.querySelector('.pf-cancel').onclick = () => { clearDraft(); sheetLock = false; if (isNew) closeSheet(); else openPin(o.id); };
     f.onsubmit = async (ev) => {
       ev.preventDefault(); err.textContent = '';
-      if (!gv('title') && !gv('note') && !pics.length && !files.length) { err.textContent = 'Add a title, a note or a photo.'; return; }
+      if (!gv('title') && !gv('note') && !ph.count()) { err.textContent = 'Add a title, a note or a photo.'; return; }
       save.disabled = true; save.textContent = 'Saving…';
       try {
-        const urls = []; for (const x of files) urls.push(await upload(x));
+        const photos = await ph.urls(upload);
         const user = await signedInUser();
-        const rec = { title: gv('title') || null, note: gv('note') || null, photos: [...pics, ...urls], ...(k === 'explore' ? { link: norm(gv('link') || null) } : {}) };
+        const rec = { title: gv('title') || null, note: gv('note') || null, photos, ...(k === 'explore' ? { link: norm(gv('link') || null) } : {}) };
         const q = isNew
           ? sb.from('places').insert({ ...rec, kind: k, lat: o.lat, lng: o.lng, created_by_name: user?.user_metadata?.name || null })
           : sb.from('places').update(rec).eq('id', o.id);

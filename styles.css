@@ -933,3 +933,4 @@ a.brand { color: inherit; text-decoration: none; }
 }
 
 .pl-title.none { color: var(--ink-soft); font-weight: 600; font-style: italic; }
+.thumbs .pt-tile { margin-top: 0; }
