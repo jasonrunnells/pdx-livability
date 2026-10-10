@@ -545,7 +545,7 @@
               3, theme === 'dark' ? '#2C4A33' : '#3F6E47', theme === 'dark' ? '#27432F' : '#4A7A4F'],
             'fill-extrusion-base': ['get', 'b'],
             'fill-extrusion-height': ['get', 'h'],
-            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.15, 1],
+            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], ZOOM.buildings, 0, ZOOM.buildings + 0.15, 0.72],   // trees a little see-through so they don't hide houses
             'fill-extrusion-vertical-gradient': true,
           } })),
 
@@ -1188,7 +1188,7 @@
     if (EMBED_WIDE) { tellClosed(); return; }   // desktop panel: the page closes it
     if (EMBED) setTimeout(tellClosed, 320);      // phone: slide the card down like the map, then tell the page
     sheetLock = false; sheetBody.onclick = null; draftMarker?.remove(); draftMarker = null;   // drop any unsaved new pin
-    sheet.classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); document.body.classList.remove('sheet-open');
+    sheet.classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); document.body.classList.remove('sheet-open'); focusLL = null;
     clearSelection();
   }
   sheet.querySelector('.x').onclick = closeSheet;
@@ -1707,19 +1707,52 @@
     ? { top: 40, bottom: Math.round(map.getContainer().clientHeight * 0.68) + 16, left: 30, right: 30 }
     : { top: 60, bottom: 60, left: 380 + 16 + 50, right: 60 });
   /* 3D: the map's own offset/padding math assumes a flat, untilted map, so in 3D a picked spot landed off-center.
-     Instead every pick in 3D goes to the same kind of view: a fixed tilt (PICK_PITCH), a set zoom, the current
+     Instead every pick in 3D goes to the same kind of view: one tilt, the zoom rules below, the current
      compass direction, with the spot in the middle of the open area above the card (phone) or beside it (desktop).
      The center that does that is found on a copy of the camera (nothing moves), allowing for the hills, then the
      map glides there in one move. */
-  const PICK_PITCH = 50, PICK_ZOOM = 17.5;
-  function frame3D(ll, zoom, duration = 700) {
-    const pad = sheetPad(), box = map.getContainer(), W = box.clientWidth, H = box.clientHeight;
+  /* Camera rules (kept simple so moves are predictable):
+     - A tap never zooms out. In 2D it never rotates; in 3D a home or lot turns so you look at its street-facing side.
+     - If you're already close (zoom NEAR or more), a tap keeps your zoom and just slides the spot into the open area.
+       From farther out it zooms in to TAP_ZOOM. Lots are fitted, but never closer than LOT_MAX.
+     - In 3D every move keeps one tilt: yours if you've tilted the map yourself, otherwise TILT. */
+  const TILT = 55, NEAR = 16, TAP_ZOOM = 17, LOT_MAX = 18;
+  let focusLL = null;   // the home or lot the open card is about (turning 3D on keeps it in view)
+  const tiltNow = () => (map.getPitch() >= 25 ? map.getPitch() : TILT);
+  const tapZoom = (want = TAP_ZOOM) => { const z = map.getZoom(); return z >= NEAR ? z : Math.max(z, want); };
+  const flatOffset = () => { const pad = sheetPad(); return [(pad.left - pad.right) / 2, (pad.top - pad.bottom) / 2]; };
+  // Street-facing view (3D): find the street in front of a home or lot (the one named in its address, else the nearest
+  // street) and return the compass direction from that street to the building, so the camera looks at its front.
+  function faceBearing(ll, address) {
+    if (!map.getSource('base')) return null;
+    const street = sNorm(String(address || '').split(',')[0].replace(/^\s*\d+[a-z]?\s+/i, '').replace(/\s*(#|\bapt\b|\bunit\b|\bste\b).*$/i, ''));
+    const k = Math.cos(ll[1] * Math.PI / 180), M = 111320;   // degrees -> meters (east-west shrinks with latitude)
+    const xy = (c) => [(c[0] - ll[0]) * k * M, (c[1] - ll[1]) * M];
+    let best = null, bestNamed = null;
+    for (const f of map.querySourceFeatures('base', { sourceLayer: 'streets' })) {
+      const pr = f.properties || {}; if (pr.class === 'rail' || pr.class === 'motorway' || pr.class === 'ramp') continue;
+      const named = street && pr.name && sNorm(pr.name) === street;
+      const lines = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : f.geometry.type === 'LineString' ? [f.geometry.coordinates] : [];
+      for (const ln of lines) for (let i = 1; i < ln.length; i++) {
+        const a = xy(ln[i - 1]), b = xy(ln[i]), dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+        const t = L2 ? Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / L2)) : 0, px = a[0] + t * dx, py = a[1] + t * dy, d = Math.hypot(px, py);
+        if (d > 150) continue;
+        const hit = { d, px, py };
+        if (!best || d < best.d) best = hit;
+        if (named && (!bestNamed || d < bestNamed.d)) bestNamed = hit;
+      }
+    }
+    const h = bestNamed || best; if (!h || h.d < 1) return null;
+    return (Math.atan2(-h.px, -h.py) * 180 / Math.PI + 360) % 360;   // from the street point toward the building
+  }
+  function frame3D(ll, zoom, duration = 700, bearing = map.getBearing()) {
+    const pad = sheetPad(), box = map.getContainer(), W = box.clientWidth, H = box.clientHeight, pitch = tiltNow();
     const goal = new maplibregl.Point((pad.left + W - pad.right) / 2, (pad.top + H - pad.bottom) / 2);
     const target = maplibregl.LngLat.convert(ll);
     let center = target;
     try {
       const T = map.terrain, tr = map.transform.clone();
-      tr.pitch = PICK_PITCH; tr.zoom = zoom;
+      tr.pitch = pitch; tr.zoom = zoom; tr.bearing = bearing;
       const elev = (q) => { try { return T ? T.getElevationForLngLatZoom(q, Math.floor(zoom)) || 0 : 0; } catch { return 0; } };
       for (let i = 0; i < 6; i++) {
         tr.center = center; tr.elevation = elev(center);
@@ -1729,22 +1762,29 @@
       }
     } catch (err) { console.warn(err); center = target; }
     map.stop();
-    map.easeTo({ center, zoom, pitch: PICK_PITCH, duration });
+    map.easeTo({ center, zoom, pitch, bearing, duration });
   }
   const bboxCenter = ([x0, y0, x1, y1]) => [(x0 + x1) / 2, (y0 + y1) / 2];
-  function frameBounds(bb, maxZoom, duration) {   // fit a shape in the open area (3D-safe)
-    if (!is3D) { map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: sheetPad(), maxZoom, duration }); return; }
-    const cam = map.cameraForBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: sheetPad(), maxZoom, bearing: map.getBearing() });
-    frame3D(bboxCenter(bb), Math.min((cam?.zoom ?? PICK_ZOOM) - 0.3, maxZoom), duration);   // a touch wider: tilted views foreshorten
+  function frameBounds(bb, maxZoom = LOT_MAX, duration = 700, bearing = map.getBearing()) {   // fit a shape in the open area
+    const z = map.getZoom();
+    const cam = map.cameraForBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: sheetPad(), maxZoom, bearing });
+    let zoom = (cam?.zoom ?? TAP_ZOOM) - (is3D ? 0.3 : 0);   // a touch wider in 3D: tilted views foreshorten
+    if (z >= NEAR && z <= zoom) zoom = z;                      // already close and it fits: keep your zoom
+    zoom = Math.min(zoom, maxZoom);
+    if (is3D) return frame3D(bboxCenter(bb), zoom, duration, bearing);
+    map.stop();
+    map.easeTo({ center: bboxCenter(bb), zoom, offset: flatOffset(), bearing: map.getBearing(), duration });
   }
-  function cameraToPoint(ll, zoom) {
-    if (is3D) return frame3D(ll, PICK_ZOOM);   // same view every time in 3D
-    const pad = sheetPad(), box = map.getContainer();
-    const offset = [(pad.left - pad.right) / 2, (pad.top - pad.bottom) / 2];
-    map.easeTo({ center: ll, zoom: Math.max(map.getZoom(), zoom), offset, duration: 700 });
-    void box;
+  function cameraToPoint(ll, zoom = TAP_ZOOM, address = null) {
+    const z = tapZoom(zoom); focusLL = ll;
+    if (is3D) return frame3D(ll, z, 700, (address && faceBearing(ll, address)) ?? map.getBearing());
+    map.stop();
+    map.easeTo({ center: ll, zoom: z, offset: flatOffset(), duration: 700 });
   }
-  function cameraToLot(f) { frameBounds(bboxOf(f), 19, 700); }
+  function cameraToLot(f) {
+    const bb = bboxOf(f), face = is3D ? faceBearing(bboxCenter(bb), f.properties?.addr) : null; focusLL = bboxCenter(bb);
+    frameBounds(bb, LOT_MAX, 700, face ?? map.getBearing());
+  }
 
   async function homeCard(r, sa) {
     const [hoods, cities] = await Promise.all([getJSON('data/neighborhoods.geojson').catch(() => null), getJSON('data/cities.geojson').catch(() => null)]);
@@ -1813,7 +1853,7 @@
     const hn = String(r.address || '').trim().split(' ')[0];
     if (/^\d/.test(hn)) getJSON('data/tax/' + hn.slice(0, 3) + '.json').catch(() => {});   // start loading the tax file now, so the Property section fills in one go
     select('point', 'pHomes', id);
-    cameraToPoint([r.lng, r.lat], 17.5);
+    cameraToPoint([r.lng, r.lat], TAP_ZOOM, r.address);
     const sa = await schoolsAt(r.lng, r.lat);
     const { html, hood } = await homeCard(r, sa);
     if (token !== openToken) return;
@@ -2391,7 +2431,10 @@
     if (on) {
       map.setMaxPitch(MAX_PITCH_3D);
       map.setTerrain({ source: 'terrain3d', exaggeration: EXAGGERATE });
-      map.easeTo({ pitch: 58, bearing: map.getBearing() || -12, duration: 1100 });
+      // Tilt only (no turn, no zoom). With a card open, tilt around that home or lot so it stays in the open area;
+    // otherwise tilt around the middle of the screen.
+    if (focusLL && sheet.classList.contains('open')) frame3D(focusLL, map.getZoom(), 1000, map.getBearing());
+    else map.easeTo({ pitch: TILT, duration: 1000 });
       sunApply();
     } else {
       map.setTerrain(null);
