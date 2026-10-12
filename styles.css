@@ -4,7 +4,7 @@
    ========================================================================== */
 :root {
   color-scheme: light dark;
-  --bg: #F5F2E9;
+  --bg: #FFFFFF;
   --surface: #FFFFFF;
   --tint: #F0F1F2;
   --ink: #26292C;
@@ -933,3 +933,4 @@ a.brand { color: inherit; text-decoration: none; }
 }
 
 .pl-title.none { color: var(--ink-soft); font-weight: 600; font-style: italic; }
+.thumbs .pt-tile { margin-top: 0; }
