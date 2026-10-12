@@ -1,0 +1,263 @@
+/* ==========================================================================
+   PDX Livability — home page, "Swiss" trial (only index.html loads this file).
+   Bone paper + near-black ink, one blue accent, Inter Tight + IBM Plex Mono,
+   thin rules instead of boxes, square corners, no shadows.
+   To undo: remove the home-swiss.css <link> and class="swiss" from index.html
+   (or discard index.html changes in GitHub Desktop and delete this file).
+   ========================================================================== */
+.swiss {
+  --bg: #F2EFE8;
+  --surface: #F7F5F0;
+  --tint: #E8E4DB;
+  --ink: #1E1C1C;
+  --ink-soft: #64605A;
+  --line: rgba(30, 28, 28, 0.16);
+  --rule: #1E1C1C;
+  --accent: #2B6FE8;
+  --blue: var(--accent); --blue-h: #1F5BC9;
+  --shadow-sm: none; --shadow: none;
+  --r-sm: 0; --r: 0; --r-lg: 0;
+  --sans: "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font: var(--sans);
+  --wrap: max(16px, calc((100vw - 1120px) / 2 + 32px));
+}
+@media (prefers-color-scheme: dark) {
+  .swiss {
+    --bg: #161514; --surface: #1D1C1A; --tint: #2A2825;
+    --ink: #EDE9E1; --ink-soft: #A29D94;
+    --line: rgba(237, 233, 225, 0.16); --rule: #EDE9E1;
+    --accent: #5B93F5; --blue-h: #7AA8F7;
+  }
+}
+
+.swiss { font-family: var(--sans); font-size: 15px; letter-spacing: -0.005em; overflow-x: clip; }
+.swiss h1, .swiss h2, .swiss h3 { font-family: var(--sans); }
+
+/* shared: small mono uppercase label */
+.swiss .eyebrow, .swiss .lbl, .swiss .stats .stat > span, .swiss .spread-head span,
+.swiss .check-tiles .tile > span, .swiss .alert-grades .tile > span {
+  font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+}
+
+/* ---------- Header: full-width bar, brand left, mono links split by thin rules ---------- */
+.swiss .top {
+  max-width: none; min-height: calc(56px + var(--safe-top)); padding: var(--safe-top) var(--wrap) 0;
+  border-bottom: 1px solid var(--line);
+}
+.swiss .brand { gap: 10px; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+.swiss .mark { width: 18px; height: 18px; background: var(--ink); clip-path: polygon(0 35%, 100% 0, 100% 100%, 0 100%); }
+.swiss .mark i { display: none; }
+.swiss .hd-right { align-self: stretch; gap: 0; }
+.swiss .hd-nav { align-self: stretch; gap: 0; margin: 0 12px 0 0; }
+.swiss .hd-nav a {
+  display: flex; align-items: center; padding: 0 20px; border-radius: 0; border-left: 1px solid var(--line);
+  font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
+}
+.swiss .hd-nav a:last-child { border-right: 1px solid var(--line); }
+.swiss .hd-nav a:hover { background: var(--ink); color: var(--bg); }
+.swiss .hd-menu-btn { border-radius: 0; color: var(--ink); }
+.swiss .avatar { width: 30px; height: 30px; border-radius: 0; border: 0; background: var(--ink); color: var(--bg); font-family: var(--mono); font-weight: 500; font-size: 13px; }
+.swiss .hd-menu { border-radius: 0; padding: 0; border: 1px solid var(--rule); background: var(--bg); }
+.swiss .hd-menu a, .swiss .hd-menu button {
+  border-radius: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.swiss .hd-menu a + a, .swiss .hd-menu button { border-top: 1px solid var(--line); margin: 0; }
+.swiss .hd-menu a:hover, .swiss .hd-menu button:hover { background: var(--ink); color: var(--bg); }
+
+/* ---------- Hero: full-bleed photo, huge light headline ---------- */
+.swiss main { padding-bottom: calc(80px + var(--safe-bottom)); }
+.swiss .hero, .swiss .hero:is(*) {
+  display: flex; flex-direction: column; justify-content: flex-end;
+  margin: 0 calc(50% - 50vw); min-height: min(68vh, 560px);
+  border: 0; border-radius: 0; box-shadow: none; background: #1B211C; color: #FFFFFF; isolation: isolate;
+}
+.swiss .hero-art { display: block; position: absolute; inset: 0; z-index: -1; height: auto; border: 0; background: none; }
+.swiss .hero-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 62%;
+  filter: saturate(0.62) contrast(1.05) brightness(0.82); }
+.swiss .hero-art::after { display: block; content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(14, 16, 14, 0.78) 0%, rgba(14, 16, 14, 0.38) 45%, rgba(14, 16, 14, 0.12) 100%); }
+.swiss .hero-body { order: 0; align-self: stretch; max-width: none; padding: 120px var(--wrap) 40px; }
+.swiss .hero .eyebrow { margin: 0 0 14px; color: rgba(255, 255, 255, 0.86); }
+.swiss .hero h1 {
+  margin: 0; color: #FFFFFF; text-shadow: none;
+  font-size: clamp(64px, 16vw, 168px); font-weight: 300; line-height: 0.9; letter-spacing: -0.045em;
+}
+.swiss .hero .lede { max-width: 40ch; margin: 22px 0 0; color: rgba(255, 255, 255, 0.86); font-size: 17px; line-height: 1.45; }
+@media (max-width: 799px) {
+  .swiss .hero { min-height: 440px; }
+  .swiss .hero-body { padding: 96px 16px 26px; }
+  .swiss .hero .lede { font-size: 15px; margin-top: 14px; }
+}
+
+/* ---------- Start strip: three numbered cells, thin rules, first one solid ---------- */
+.swiss .actions {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0;
+  margin: 0 calc(50% - 50vw) 56px; padding: 0 var(--wrap); border-bottom: 1px solid var(--line);
+}
+.swiss .act {
+  position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 34px;
+  min-height: 150px; padding: 18px 22px 20px; border: 0; border-left: 1px solid var(--line); border-radius: 0;
+  background: transparent; color: var(--ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.swiss .act:last-child { border-right: 1px solid var(--line); }
+.swiss .act-n { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; }
+.swiss .act-t { font-size: clamp(22px, 2.3vw, 30px); font-weight: 300; letter-spacing: -0.025em; line-height: 1.1; padding-right: 48px; }
+.swiss .arr { position: absolute; right: 22px; bottom: 24px; width: 32px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; transition: transform 0.2s; }
+.swiss .act:first-child { background: var(--ink); color: var(--bg); border-left-color: var(--ink); }
+.swiss .act:hover { background: var(--ink); color: var(--bg); }
+.swiss .act:first-child:hover { background: var(--accent); border-left-color: var(--accent); color: #FFFFFF; }
+.swiss .act:hover .arr { transform: translateX(4px); }
+.swiss .act:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 799px) {
+  .swiss .actions { grid-template-columns: 1fr; padding: 0; margin-bottom: 40px; }
+  .swiss .act { flex-direction: row; align-items: center; justify-content: flex-start; gap: 16px; min-height: 64px;
+    padding: 0 16px; border-left: 0; border-right: 0 !important; border-top: 1px solid var(--line); }
+  .swiss .act:first-child { border-top: 0; }
+  .swiss .act-t { font-size: 21px; }
+  .swiss .arr { right: 16px; bottom: auto; top: 50%; margin-top: -8px; }
+}
+
+/* ---------- Buttons (sign in, sheet, alert): square, mono caps ---------- */
+.swiss .btn {
+  border-radius: 0; min-height: 46px; padding: 0 18px; gap: 8px;
+  font-family: var(--mono); font-size: 12.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; box-shadow: none;
+}
+.swiss .btn:active { transform: none; }
+.swiss .btn.primary { background: var(--ink); color: var(--bg); }
+.swiss .btn.primary:not(:disabled):hover { background: var(--accent); color: #FFFFFF; }
+.swiss .btn.secondary, .swiss .btn.ghost, .swiss .btn.outline {
+  background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--rule);
+}
+.swiss .btn.secondary:hover, .swiss .btn.ghost:hover, .swiss .btn.outline:hover { background: var(--ink); color: var(--bg); }
+.swiss .btn.danger { background: #C23B3B; color: #FFFFFF; }
+
+/* ---------- Inputs ---------- */
+.swiss input, .swiss textarea { border-radius: 0; border: 1px solid var(--line); background: transparent; }
+.swiss input:focus, .swiss textarea:focus { border-color: var(--rule); box-shadow: none; }
+.swiss .lbl { margin: 16px 0 6px; color: var(--ink-soft); }
+
+/* ---------- Sign in ---------- */
+.swiss .panel { max-width: 440px; padding: 24px; border-radius: 0; border: 1px solid var(--rule); background: transparent; box-shadow: none; }
+.swiss .panel h2 { font-size: 32px; font-weight: 300; letter-spacing: -0.03em; }
+
+/* ---------- Sections: numbered mono label + light heading on a full rule ---------- */
+.swiss #authed { counter-reset: sec; }
+.swiss .block { counter-increment: sec; margin-bottom: 64px; }
+.swiss .block-head { align-items: flex-end; margin-bottom: 20px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.swiss h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 300; letter-spacing: -0.03em; line-height: 1.05; }
+.swiss .block-head h2::before {
+  content: "0" counter(sec); display: block; margin-bottom: 14px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; color: var(--ink-soft);
+}
+.swiss .block-head .more {
+  gap: 8px; color: var(--ink); font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  padding-bottom: 4px; border-bottom: 1px solid var(--rule);
+}
+.swiss .block-head .more:hover { color: var(--accent); border-color: var(--accent); }
+
+/* scroll arrows: joined square cells */
+.swiss .nav { gap: 0; }
+.swiss .navbtn { width: 44px; height: 40px; border-radius: 0; border: 1px solid var(--line); background: transparent; box-shadow: none; }
+.swiss .navbtn + .navbtn { border-left: 0; }
+.swiss .navbtn .ic { stroke-width: 1.5; }
+.swiss .navbtn:not(:disabled):hover { background: var(--ink); color: var(--bg); }
+.swiss .navbtn:disabled { opacity: 0.3; }
+
+/* ---------- Recent update cards ---------- */
+.swiss .card, .swiss .card:hover, .swiss .card:active { border-radius: 0 !important; box-shadow: none !important; border: 1px solid var(--line); background: var(--surface); }
+@media (hover: hover) { .swiss .card:hover { border-color: var(--rule); } }
+.swiss .imgwrap { background: var(--tint); }
+.swiss .imgwrap img { filter: saturate(0.85); }
+.swiss .ph.solid { filter: saturate(0.7); }
+.swiss .chip, .swiss .visited, .swiss .prio {
+  border-radius: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; padding: 4px 8px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.swiss .chip { background: var(--bg); color: var(--ink); }
+.swiss .chip i { border-radius: 0; width: 7px; height: 7px; }
+.swiss .visited { background: var(--ink); color: var(--bg); }
+.swiss .prio { background: var(--accent); color: #FFFFFF; }
+.swiss .body { padding: 12px 14px 14px; gap: 6px; }
+.swiss .t { font-size: 16px; font-weight: 400; letter-spacing: -0.01em; }
+.swiss .w { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.swiss .price { font-weight: 400; letter-spacing: -0.02em; }
+.swiss .empty { border-radius: 0; border: 1px solid var(--line); background: transparent; font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; }
+
+/* ---------- Home stats: shared-rule grid, big thin numbers ---------- */
+.swiss .stats { gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.swiss .stats .stat {
+  gap: 0; min-height: 170px; padding: 16px 18px 18px; border: 0; border-radius: 0; box-shadow: none; background: var(--bg);
+  justify-content: space-between;
+}
+.swiss .stats .stat > span { order: 0; color: var(--ink-soft); }
+.swiss .stats .stat b { order: 1; margin-top: auto; font-size: clamp(48px, 6vw, 72px); font-weight: 300; letter-spacing: -0.045em; line-height: 1; }
+.swiss .stats .stat.name b { font-size: clamp(24px, 2.4vw, 30px); font-weight: 300; letter-spacing: -0.025em; line-height: 1.1; white-space: normal; }
+.swiss .stats .stat.hood b, .swiss .stats .stat.city b { color: var(--ink); }
+.swiss .stats .stat small { order: 2; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); }
+.swiss .stats a.link-tile { padding-right: 18px; }
+.swiss .stats a.link-tile .go { top: 16px; right: 16px; transform: none; color: var(--ink); stroke-width: 1.5; }
+@media (hover: hover) { .swiss .stats a.link-tile:hover { background: var(--ink); color: var(--bg); } .swiss .stats a.link-tile:hover > span, .swiss .stats a.link-tile:hover small, .swiss .stats a.link-tile:hover b, .swiss .stats a.link-tile:hover .go { color: var(--bg); } }
+.swiss .stats a.link-tile:active { background: var(--tint); }
+@media (max-width: 799px) {
+  .swiss .stats { gap: 1px; }
+  .swiss .stats .stat { min-height: 132px; padding: 12px 12px 14px; }
+  .swiss .stats .stat b { font-size: 48px; }
+  .swiss .stats .stat.name { min-height: 0; }
+  .swiss .stats .stat.name b { font-size: 24px; margin-top: 22px; }
+  .swiss .stats .stat small { font-size: 12px; }
+}
+
+/* ---------- Price / rating bands ---------- */
+.swiss .spread { margin-top: 24px; padding: 16px 0 6px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; }
+.swiss .spread-head { margin-bottom: 10px; }
+.swiss .spread-head small { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; }
+.swiss .band { border-radius: 0; min-height: 38px; padding: 4px 8px; }
+.swiss .band-lbl { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0.02em; color: var(--ink); }
+.swiss .band-bar { height: 10px; border-radius: 0; background: var(--tint); }
+.swiss .band-bar i { border-radius: 0; background: var(--ink); }
+.swiss .band.open { background: var(--tint); }
+.swiss .band.open .band-bar { background: var(--bg); }
+.swiss .band.open .band-bar i, .swiss #ratings .band.open .band-bar i { background: var(--accent); }
+.swiss #ratings .band-bar i { background: var(--ink); }
+.swiss #ratings .band.unrated .band-bar i { background: color-mix(in srgb, var(--ink-soft) 45%, transparent); }
+.swiss .band-stars svg, .swiss .peek-rating svg, .swiss .stats .stat.rating .star { fill: var(--ink); }
+.swiss .band-n { font-family: var(--mono); font-size: 13px; font-weight: 500; }
+.swiss .band-avg { border-radius: 0; font-family: var(--mono); font-weight: 500; }
+.swiss .band-list { border-radius: 0; border-color: var(--line); padding: 0; margin: 0 0 8px; }
+.swiss .band-list .band-home { border-radius: 0; }
+.swiss .band-list .band-home b { font-weight: 500; }
+.swiss .peek-img { border-radius: 0; }
+.swiss .peek-visited { border-radius: 0; background: var(--ink); color: var(--bg); }
+.swiss .peek-facts b { font-weight: 500; }
+.swiss .peek-sub .nb-hood, .swiss .peek-sub .nb-city { color: var(--ink); font-weight: 500; }
+.swiss .peek-map.btn { border-radius: 0; font-size: 11.5px; color: var(--bg); }
+
+/* ---------- Add-a-home sheet, school check, alert ---------- */
+.swiss .scrim { background: rgba(20, 18, 16, 0.5); }
+.swiss .sheet { border-radius: 0; background: var(--bg); }
+@media (min-width: 800px) { .swiss .sheet { border: 1px solid var(--rule); } }
+.swiss .sheet-head { background: var(--bg); border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 4px; }
+.swiss .sheet-head h2 { font-size: 26px; }
+.swiss .x { border-radius: 0; }
+.swiss .x:hover { background: var(--ink); color: var(--bg); }
+.swiss .or { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.swiss .addr-results:not(:empty) { border-radius: 0; border-color: var(--rule); background: var(--bg); padding: 0; }
+.swiss .addr-results button { border-radius: 0; }
+.swiss .addr-results button + button { border-top: 1px solid var(--line); }
+.swiss .addr-results b { font-weight: 500; }
+.swiss .check-tiles .tile, .swiss .alert-grades .tile { border-radius: 0; background: transparent; border: 1px solid var(--line); }
+.swiss .check-tiles .tile b, .swiss .alert-grades .tile b { font-weight: 500; }
+.swiss .check-status { font-family: var(--mono); font-size: 11.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+.swiss .grade { border-radius: 0; font-family: var(--mono); font-weight: 500; }
+.swiss .photobtn { border-radius: 0; border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.swiss .thumbs img { border-radius: 0; }
+.swiss .formacts { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.swiss .prio-switch .sw { border-radius: 0; }
+.swiss .alert-card { border-radius: 0; border: 1px solid var(--rule); background: var(--bg); }
+.swiss .alert-icon { border-radius: 0; }
+.swiss .alert-head h3 { font-weight: 400; font-size: 22px; letter-spacing: -0.02em; }
+
+/* home card panel frame (the map's own card stays as is) */
+.swiss .hd-panel { border-radius: 0; }

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>PDX Livability</title>
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#F5F2E9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#16191C" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F2EFE8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161514" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,8 +14,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Portland">
 <link rel="stylesheet" href="styles.css?v=20261007b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="home-swiss.css?v=20261012a">
 </head>
-<body>
+<body class="swiss">
 
 <header class="top">
   <div class="brand">
@@ -51,22 +55,15 @@
       <p class="eyebrow">Where should we live?</p>
       <h1>Portland</h1>
       <p class="lede">Explore neighborhoods, schools and homes, and keep track of everything we find along the way.</p>
-      <div class="actions">
-        <a class="btn primary" href="maps/explorer/index.html">
-          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5 3.75 7v12L9 17l6 2 5.25-2V5L15 7z"/><path d="M9 5v12M15 7v12"/></svg>
-          Open the map
-        </a>
-        <button class="btn secondary" id="addHomeBtn" type="button">
-          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 10.4 12 4.5l7.25 5.9V18.5a1 1 0 0 1-1 1H5.75a1 1 0 0 1-1-1z"/><path d="M12 10.5v6M9 13.5h6"/></svg>
-          Add a home
-        </button>
-        <a class="btn outline dash" href="homes.html">
-          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6.5" height="7.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="4.5" rx="1.5"/><rect x="4" y="14.5" width="6.5" height="5.5" rx="1.5"/><rect x="13.5" y="11.5" width="6.5" height="8.5" rx="1.5"/></svg>
-          Homes dashboard
-        </a>
-      </div>
     </div>
   </section>
+
+  <!-- Start: three numbered cells under the photo -->
+  <nav class="actions" aria-label="Start">
+    <a class="act" href="maps/explorer/index.html"><span class="act-n">01</span><span class="act-t">Open the map</span><svg class="arr" viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h29M23 1.5 30 8l-7 6.5"/></svg></a>
+    <button class="act" id="addHomeBtn" type="button"><span class="act-n">02</span><span class="act-t">Add a home</span><svg class="arr" viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h29M23 1.5 30 8l-7 6.5"/></svg></button>
+    <a class="act" href="homes.html"><span class="act-n">03</span><span class="act-t">Homes dashboard</span><svg class="arr" viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h29M23 1.5 30 8l-7 6.5"/></svg></a>
+  </nav>
 
   <!-- Sign in -->
   <section class="gate panel" id="gate" hidden>
