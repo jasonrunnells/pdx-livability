@@ -205,7 +205,14 @@
   let homesData = null;
   const homesRows = new Map();   // full rows by id, for the home card
   const homeFeature = (r) => ({ type: 'Feature', id: r.id, geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
-    properties: { id: r.id, address: r.address || r.title || 'Home', price: r.price, visited: !!r.visited, priority: !!r.priority } });
+    properties: { id: r.id, address: r.address || r.title || 'Home', price: r.price, tag: shortPrice(r.price), visited: !!r.visited, priority: !!r.priority } });
+  // Map price tags: 345000 -> "345K", 1250000 -> "1.25M"; no price -> "—"
+  function shortPrice(v) {
+    v = +v; if (!(v > 0)) return '—';
+    const k = Math.round(v / 1000);
+    if (k < 1000) return k + 'K';
+    return (v / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M';
+  }
   async function loadHomes() {
     if (!sb) throw new Error('Could not reach the shared database.');
     const { data: { session } } = await sb.auth.getSession();
@@ -363,6 +370,19 @@
         layout: { ...vis(o.key), 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Open Sans Bold'],
                   'text-size': 14, 'text-allow-overlap': true, 'text-ignore-placement': true },
         paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(0,0,0,0.28)', 'text-halo-width': 0.8 } });
+      if (o.key === 'pHomes') {   // single homes: a price tag pill (345K); visited = green, priority = amber ring; drawn on top
+        L.points.push({ id: 'pHomes-dot', type: 'symbol', source: 'ov-pHomes', filter: ['!', ['has', 'point_count']],
+          layout: { ...vis(o.key),
+                    'icon-image': ['concat', `pill-${c === PALETTE.dark ? 'dark' : 'light'}`,
+                      ['case', ['boolean', ['get', 'visited'], false], '-v', ''], ['case', ['boolean', ['get', 'priority'], false], '-p', '']],
+                    'icon-text-fit': 'width', 'icon-text-fit-padding': [0, 1, 0, 1],
+                    'text-field': ['get', 'tag'], 'text-font': ['Open Sans Bold'],
+                    'text-size': ['interpolate', ['linear'], ['zoom'], 9, 11, 14, 12.5],
+                    'symbol-sort-key': ['case', ['boolean', ['get', 'priority'], false], 1, 0],
+                    'icon-allow-overlap': true, 'icon-ignore-placement': true, 'text-allow-overlap': true, 'text-ignore-placement': true },
+          paint: { 'text-color': '#FFFFFF' } });
+        continue;
+      }
       L.points.push({ id: o.key + '-dot', type: 'symbol', source: 'ov-' + o.key, filter: ['!', ['has', 'point_count']],
         layout: { ...vis(o.key),
                   // priority homes get their own marker (amber ring + flag badge) and draw on top; they still cluster normally
@@ -858,6 +878,21 @@
     return cv;
   }
 
+  // Home price tag: a stretchable pill (home color, green when visited) with a white ring; priority adds an amber ring outside.
+  // Drawn at 2x; the straight middle stretches to fit the price text.
+  function drawPill(theme, visited, priority) {
+    const m = 6, a = priority ? 5 : 0, w = 3.5, inH = 36, H = Math.round(2 * (m + a + w) + inH), W = H + 24;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+    const col = visited ? VISITED[theme] : PALETTE[theme][OVERLAYS.find((o) => o.key === 'pHomes').color];
+    const pill = (inset, fill) => { const h = H - 2 * inset, r = h / 2; g.beginPath(); g.roundRect(inset, inset, W - 2 * inset, h, r); g.fillStyle = fill; g.fill(); };
+    g.save(); g.shadowColor = 'rgba(0,0,0,0.32)'; g.shadowBlur = 5; g.shadowOffsetY = 1.5;
+    pill(m, priority ? PRIORITY : '#FFFFFF'); g.restore();
+    if (priority) pill(m + a, '#FFFFFF');
+    pill(m + a + w, col);
+    const mid = [Math.ceil(H / 2), Math.floor(W - H / 2)];
+    return [g.getImageData(0, 0, W, H), { pixelRatio: 2, stretchX: [mid], content: [mid[0] - 4, 0, mid[1] + 4, H] }];
+  }
+
   /* ---------- Layers button + panel ---------- */
   // Attendance areas with a '_qual' tag: 'yes' if a home there passes the add-a-home rule (area grade C or better and
   // its high school B or better), 'no' if a known grade fails it, 'unknown' if a grade is missing
@@ -1111,6 +1146,8 @@
     if (sh && !map.hasImage(e.id)) { map.addImage(e.id, drawShield(sh[1], sh[2]), { pixelRatio: 2 }); return; }
     const m = /^pt-(\w+)-(light|dark)(-v)?(-p)?$/.exec(e.id);
     if (m && GLYPH[m[1]] && !map.hasImage(e.id)) { const cv = drawPoint(m[1], m[2], !!m[4], !!m[3]); map.addImage(e.id, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height), { pixelRatio: 2 }); return; }
+    const pm = /^pill-(light|dark)(-v)?(-p)?$/.exec(e.id);
+    if (pm && !map.hasImage(e.id)) { map.addImage(e.id, ...drawPill(pm[1], !!pm[2], !!pm[3])); return; }
     if (e.id.startsWith('sym-') && !map.hasImage(e.id)) map.addImage(e.id, drawSymbol(e.id), { pixelRatio: 2 });
     if (e.id === 'prio-badge' && !map.hasImage(e.id)) {   // flag badge for priority clusters
       const S = 30, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'), c0 = S / 2;

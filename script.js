@@ -367,6 +367,28 @@ function zillowAddress(url) {
   return [street, [city, [st, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
 }
 
+/* Redfin and Realtor.com links carry the address too:
+   redfin.com/OR/Portland/1234-SE-Ash-St-97214/home/12345678  (units: .../1234-SE-Ash-St-97214/unit-5/home/...)
+   realtor.com/realestateandhomes-detail/1234-SE-Ash-St_Portland_OR_97214_M12345-67890 */
+const dash = (x) => { try { x = decodeURIComponent(x); } catch {} return x.replace(/[-+]/g, ' ').replace(/\s+/g, ' ').trim(); };
+function redfinAddress(url) {
+  const m = url.match(/redfin\.com\/([A-Za-z]{2})\/([^/?#]+)\/([^/?#]+?)(?:\/unit-([^/?#]+))?\/home\//i);
+  if (!m) return null;
+  const slug = m[3].match(/^(.*?)-(\d{5})$/), street = dash(slug ? slug[1] : m[3]);
+  if (!/^\d/.test(street)) return null;
+  return [street + (m[4] ? ' Unit ' + dash(m[4]) : ''), dash(m[2]), [m[1].toUpperCase(), slug ? slug[2] : ''].filter(Boolean).join(' ')].join(', ');
+}
+function realtorAddress(url) {
+  const m = url.match(/realtor\.com\/realestateandhomes-detail\/([^/?#]+)/i);
+  if (!m) return null;
+  const [street, city, st, zip] = m[1].split('_');
+  if (!street || !city || !/^\d/.test(street)) return null;
+  return [dash(street), dash(city), [(st || '').toUpperCase(), /^\d{5}$/.test(zip || '') ? zip : ''].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+const SHORT_LINK = /(^|\/\/|\.)(redf\.in|zillow\.app\.link|rdc\.to|bit\.ly|tinyurl\.com|goo\.gl)\//i;
+const listingAddress = (u) => zillowAddress(u) || redfinAddress(u) || realtorAddress(u);
+const siteOf = (u) => (/redfin\./i.test(u) ? 'Redfin' : /realtor\.com/i.test(u) ? 'Realtor.com' : 'Zillow');
+
 /* ---------- Add a home ---------- */
 const sheet = $('#homeSheet'), scrim = $('#scrim'), form = $('#homeForm'), addrIn = $('#addrIn'), linkIn = $('#linkIn'),
       results = $('#addrResults'), hint = $('#addrHint'), checkBox = $('#schoolCheck'), details = $('#details'),
@@ -458,16 +480,17 @@ async function useAddress(a) {
   addrIn.value = a.label; await runCheck(a);
 }
 
-/* Zillow link fills the address, then it's located and checked */
+/* A Zillow, Redfin or Realtor.com link fills the address, then it's located and checked */
 linkIn.addEventListener('input', async () => {
-  const a = zillowAddress(linkIn.value.trim()), cur = addrIn.value.trim();
+  const url = linkIn.value.trim(), a = listingAddress(url), cur = addrIn.value.trim(), site = siteOf(url);
+  if (!a && SHORT_LINK.test(url)) { setHint('That’s a short share link, which hides the address. Open the listing and copy the full link from the address bar.'); return; }
   if (!a || (cur && cur !== autoAddr)) return;   // never overwrite an address you typed yourself
   addrIn.value = autoAddr = a; invalidate(); results.innerHTML = '';
-  setHint('Address filled in from the Zillow link. Finding it…');
+  setHint(`Address filled in from the ${site} link. Finding it…`);
   const loc = await locate(a).catch(() => null);
   if (addrIn.value.trim() !== a) return;
   if (!loc) { setHint("Couldn't find that address. Check it, or pick a suggestion as you type."); return; }
-  setHint('Address filled in from the Zillow link.'); autoAddr = loc.label;
+  setHint(`Address filled in from the ${site} link.`); autoAddr = loc.label;
   useAddress(loc);
 });
 
@@ -508,7 +531,7 @@ const numOf = (v) => { v = String(v ?? '').replace(/[^\d.]/g, ''); return v === 
 form.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const q = addrIn.value.trim();
-  if (!q) { homeErr.textContent = 'Enter an address or paste a Zillow link.'; return; }
+  if (!q) { homeErr.textContent = 'Enter an address or paste a listing link.'; return; }
   homeErr.textContent = '';
   if (!cleared) {   // step 1: find the address and check its schools
     if (picked && checkResult) { if (!checkResult.ok) alertBox.hidden = false; return; }
